@@ -1,0 +1,11 @@
+# dsh-autocompact bundle patch.
+#
+# The engine replaces the stock pressure policy, so the shipped
+# `compaction-basic` row is disabled and this package's row takes its place.
+# It registers itself as `ctx.compaction`, exactly like the row it replaces.
+- override:
+    - id: compaction-basic
+      disabled: true
+- insert:
+    - id: dsh-autocompact
+      name: 'dsh-autocompact'

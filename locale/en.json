@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Autocompact",
+    "description": "Context auto-compaction with model-written handoff archives kept inside each project, live-tunable thresholds, and an in-progress indicator in the Web UI."
+  }
+}

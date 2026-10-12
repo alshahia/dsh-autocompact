@@ -1,0 +1,9 @@
+node_modules/
+scripts/.dsh-target.txt
+lib/
+dist/
+*.tsbuildinfo
+.vite/
+.live-test/
+.dsh-test/
+*.log
