@@ -3,15 +3,18 @@
  *
  * Hand-written bundle: the harness serves this file as the package's `./client`
  * export and the web shell registers it through `window.__ModuleLoader__.load`.
- * There is no build step, so `require` only resolves the shell's externals
- * (`react`); everything else is plain browser API.
+ * There is no build step, so `require` only resolves the shell's platform
+ * externals (`react`, `react-dom`, both in the frozen module table); everything
+ * else is plain browser API.
  *
  * It registers ONE visual object — a composer-dock strip that:
  *  - shows an animated "compacting…" indicator (phase + elapsed time) while a
  *    compaction runs, because this harness version emits no client-visible
  *    compaction event, and
- *  - opens an inline tuning panel that reads and writes the plugin's own HTTP
- *    routes (`GET /dsh-autocompact/status`, `POST /dsh-autocompact/config`).
+ *  - opens a floating tuning panel — portaled to `document.body` and fixed above
+ *    the pill, so opening it never reflows the composer — that reads and writes
+ *    the plugin's own HTTP routes (`GET /dsh-autocompact/status`,
+ *    `POST /dsh-autocompact/config`).
  *
  * Every path is fail-safe: a missing route, a failed fetch, or a malformed
  * payload renders nothing extra instead of blanking the slot.
