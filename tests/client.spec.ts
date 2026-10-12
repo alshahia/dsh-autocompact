@@ -87,6 +87,21 @@ describe('client bundle contract', () => {
     expect(client).toContain("'.dshac-panel{position:fixed;z-index:1100;box-sizing:border-box;'")
   })
 
+  it('paints the floating panel an opaque surface instead of the translucent menu fill', () => {
+    // Regression (2026-10-12, live report "not very clear"): the panel used
+    // ONLY --dsw-specific-menu, which is the shared MENU material and is
+    // deliberately translucent (45-58% alpha; the 94% variant is macOS-only),
+    // and unlike the shipped dialogs this panel carries no MenuSurface opaque
+    // backing. Transcript and composer text therefore showed through it.
+    // The contract: an opaque theme layer sits as the layer under the family
+    // fill, and the menu blur token is applied on the panel itself.
+    expect(client).toContain(
+      "'background:var(--dsw-specific-menu,#1b1d22) var(--dsw-alias-bg-layer-1,#1b1d22);'",
+    )
+    expect(client).toContain("'backdrop-filter:var(--dsw-menu-backdrop-filter,none);'")
+    expect(client).not.toMatch(/.dshac-panel\{[^']*background:var\(--dsw-specific-menu,[^)]*\);/)
+  })
+
   it('caps the floating panel and scrolls it internally', () => {
     // An uncapped tuner clamps to the viewport margin and covers the transcript;
     // the cap keeps it a popover rather than a takeover.

@@ -83,6 +83,12 @@ instead of importing `useAnchoredPosition`.
   replacing the transparent `currentColor` box that read as foreign next to the
   ring's dialog.
 
+  **Follow-up (same day, "not very clear"):** `--dsw-specific-menu` alone is the
+  translucent MENU material (45-58% alpha outside macOS), so the panel showed the
+  transcript through it. `.dshac-panel` now layers that fill over
+  `--dsw-alias-bg-layer-1` and adds the menu `backdrop-filter` — see
+  [panel-surface-translucent](2026-10-12-panel-surface-translucent.md).
+
 ## Correction to a test premise (same change)
 
 `tests/client.spec.ts` asserted that the bundle requires **exactly `['react']`**,

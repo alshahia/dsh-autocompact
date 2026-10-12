@@ -228,7 +228,12 @@ loader (`window.__ModuleLoader__`) that registers **one** composer-dock visual:
   pill, clamped to a 12 px viewport margin and capped in height with its own scroll,
   so opening it never moves the composer, the message box or the transcript; it
   closes on a re-click, on an outside press, on Escape (which returns focus to the
-  pill) and re-anchors when the row, the pill or the panel changes size;
+  pill) and re-anchors when the row, the pill or the panel changes size. The
+  panel is **opaque**: the shared `--dsw-specific-menu` material is only 45–58%
+  opaque outside macOS, so the panel layers it over `--dsw-alias-bg-layer-1`
+  (and adds the menu `backdrop-filter`) instead of showing the transcript
+  through its own surface — see
+  [incident 15](docs/incidents/2026-10-12-panel-surface-translucent.md);
 - **adaptive polling** of `GET /dsh-autocompact/status`: ~900 ms while a compaction is
   running, ~3 s while idle;
 - fail-safe: if anything is missing or throws, it renders nothing and the chat is
@@ -362,6 +367,7 @@ evidence under [`docs/incidents/`](docs/incidents/):
 12. [An inline dock panel pushed the composer up the page](docs/incidents/2026-10-12-panel-floats-above-composer.md)
 13. [A test pinned the bundle's externals to a list that was never the rule](docs/incidents/2026-10-12-externals-list-test-premise.md)
 14. [The native settings surface already serves this plugin's Config](docs/incidents/2026-10-12-native-settings-surface-already-serves-us.md)
+15. [The floating tuner was translucent — its surface read muddy](docs/incidents/2026-10-12-panel-surface-translucent.md)
 
 Also in `docs/`:
 

@@ -1,31 +1,33 @@
 # Incident index
 
 Answering "did we already hit this?" for the auto-compact handoff engine from one page.
-Built from `docs/incidents/*.md` (14 records, every one dated 2026-10-12), `README.md`
+Built from `docs/incidents/*.md` (15 records, every one dated 2026-10-12), `README.md`
 and `docs/RETRO.md`. Everything below is transcribed from those files; `not recorded`
 means the record does not state that field. Dates and filenames are as they appear in
 the records.
 
 **How to read the numbers.** Test and file counts quoted below are **as of the record
 that states them**, not a current baseline: 7 files / 72 tests at record 1, 10 files /
-110 at records 8-9, 114 at record 10, and 10 files / **120 tests** green at records
-12-13, which is the current baseline (13:57 local, 2026-10-12). Line numbers are as of
-the same moment; `src/config.ts:152-160` is the whole `Config` object literal.
+110 at records 8-9, 114 at record 10, 120 at records 12-13, and 10 files / **121
+tests** green at record 15, which is the current baseline (14:55 local, 2026-10-12).
+Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
+`Config` object literal.
 
 ## Cross-references
 
 - `../README.md` sections that carry overlapping content:
-  ["Incident records"](../README.md) (its numbered list 1-14 is the row order here),
+  ["Incident records"](../README.md) (its numbered list 1-15 is the row order here),
   ["Known limitations"](../README.md) (item 8 records the unauthenticated-route gap),
   ["Restart, reload, and hot application"](../README.md) (restates the table in record 11),
   ["Web UI"](../README.md), ["Archives"](../README.md), ["Development"](../README.md),
   ["Trigger math"](../README.md) (record 5) and ["Retention clamping"](../README.md).
-- `incidents/` — the 14 records tabled below. Other `docs/` files: `RETRO.md` (process
+- `incidents/` — the 15 records tabled below. Other `docs/` files: `RETRO.md` (process
   reflection whose "Open risks handed over" table restates several items in
   "Open or deferred") and `PLUGIN-GUIDE.md` (the trap list distilled from these records).
 - Record-to-record links: 9 → 6 (client inject), 10 → 11 (restart semantics),
   12 → 10 (findRow fix), 12 → 11 (unauthenticated routes), 13 → 12 (same change),
-  14 → 10 (findRow was this plugin's own bug).
+  14 → 10 (findRow was this plugin's own bug), 15 → 12 (same panel, same client half)
+  and 15 → 11 (a `client.js` edit lands on the next page load).
 
 ## Incident table
 
@@ -45,6 +47,7 @@ the same moment; `src/config.ts:152-160` is the whole `Config` object literal.
 | [2026-10-12-panel-floats-above-composer.md](incidents/2026-10-12-panel-floats-above-composer.md) | 2026-10-12 | Clicking the **Auto-compact** pill pushed the message box and the bottom bar up the page | The tuner was rendered as an in-flow child of the dock row, so a ~400 px panel became part of the composer bar's height | Portal the panel to `<body>`, place it fixed above the pill from the trigger rect, clamp to a 12 px margin, cap height with its own scroll, re-anchor on scroll/resize/`ResizeObserver`, dismiss on outside press and Escape; the in-progress indicator stays inline | fixed (client half; visual check is a browser checkpoint) |
 | [2026-10-12-externals-list-test-premise.md](incidents/2026-10-12-externals-list-test-premise.md) | 2026-10-12 | `tests/client.spec.ts` pinned `client.js` externals to exactly `['react']` from an unverified comment, which would have rejected `react-dom` (the same change is also recorded in [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md)) | The platform rule was inferred from what the bundle happened to import and written down as law instead of being checked against the frozen `PLATFORM_MODULES` table | Require `react` and `react-dom` with a guarded inline fallback; the test was renamed to `'requests only shell platform modules as externals'` and asserts `['react', 'react-dom']` | fixed |
 | [2026-10-12-native-settings-surface-already-serves-us.md](incidents/2026-10-12-native-settings-surface-already-serves-us.md) | 2026-10-12 | README limitation 7 described the tuning migration as work on our side plus an unverified mechanism, when the native settings surface already renders this plugin's volatile Config | The documentation claim rested on an unchecked premise (the settings-service source was never read) | Knowledge recorded: `describe()` → `volatileForm()` already projects every active volatile Config and the native write path is the same `configEditor.edit` this plugin uses, so the migration is mostly deletion | knowledge recorded (migration deliberately not started) |
+| [2026-10-12-panel-surface-translucent.md](incidents/2026-10-12-panel-surface-translucent.md) | 2026-10-12 | The floating tuner was "not very clear": transcript and composer text showed through the panel, so its labels read muddy | The panel's only fill was `--dsw-specific-menu`, the shared MENU material at 45-58% alpha outside macOS, and unlike the shipped dialogs it has no `MenuSurface` opaque backing and had no `backdrop-filter` | Layer the translucent family fill over the opaque `--dsw-alias-bg-layer-1` (theme-tinted, fully opaque) and add `backdrop-filter: var(--dsw-menu-backdrop-filter)`; one regression assertion in `tests/client.spec.ts` | fixed (client half; visual check is a browser checkpoint) |
 
 ## What each record is authoritative for
 
@@ -62,6 +65,7 @@ the same moment; `src/config.ts:152-160` is the whole `Config` object literal.
 12. **panel-floats-above-composer** — When a slot owner lays your entry out in flow, everything rendered inside that entry is page layout; a panel belongs to the viewport and must watch the *anchor's ancestors'* size changes, not just the window's.
 13. **externals-list-test-premise** — Never pin a platform capability inside a test comment; assert against the frozen table (`PLATFORM_MODULES`) or the guide, because "illegal import" and "allowed but never declared" look identical from inside a bundle.
 14. **native-settings-surface-already-serves-us** — Before hand-writing a configuration UI, ask whether the harness already renders your Config: a schemastery `Config` whose groups are volatile gets a native, validated, revision-safe form for free, and a doc claim about platform behavior needs a file/line source or an "unverified" marker in the same sentence.
+15. **panel-surface-translucent** — `--dsw-specific-menu` is a menu *material*, not a panel background: it is 45% (dark) / 58% (light) alpha with a macOS-only 94% override, so a surface that uses it without a `MenuSurface` wrapper is translucent and unreadable on Windows. Outside `MenuSurface`, paint an opaque theme layer (`--dsw-alias-bg-layer-*`) under the fill; read alpha-bearing tokens in the theme source before shipping a surface.
 
 ## Verification matrix
 
@@ -83,9 +87,10 @@ Cells say only what the records state; `not recorded` means the record names no 
 | 12 panel-floats | `node --check client.js` exit 0; `vitest` 10 files / **120 tests** exit 0 (13:43 local); 7 structural assertions; `tests/client.spec.ts` premise corrected to `['react', 'react-dom']` | `tsc -p tsconfig.json --noEmit` exit 0 | not recorded | browser placement/behaviour **not machine-verified** (node environment, no react/jsdom, no layout) | refresh the GUI: composer bar, message box and transcript must not move |
 | 13 externals-list | `vitest` 10 files / 120 tests pass; the renamed externals test asserts `['react', 'react-dom']` | not recorded | not recorded | not recorded | not recorded |
 | 14 native-settings | suite green after the doc-only change, no numbers stated (no code touched) | not recorded | not recorded | not recorded | not recorded |
+| 15 panel-surface | `node --check client.js` exit 0; `vitest` 10 files / **121 tests** exit 0 (14:55:26 local); 1 new assertion rejecting the old single-token declaration | `tsc -p tsconfig.json --noEmit` exit 0 (14:55 local) | not recorded (client-only change) | browser result **not machine-verified** (node environment, no react/jsdom, no style computation) | refresh the GUI: the panel surface must be opaque, with no transcript text visible through it |
 
 Evidence the records state outside those five channels: target-checkout source reading
-(records 1, 4, 6, 7, 9, 12, 13, 14), the boot-free `--dump-config` composition check and
+(records 1, 4, 6, 7, 9, 12, 13, 14, 15), the boot-free `--dump-config` composition check and
 the `/dsh-autocompact-probe/report` probe package (records 9, 11), the fact that two
 archives already exist under the project tree (record 11), and the workspace guide's
 externals row plus README limitation 7 at commit `8c50f08` (records 13, 14).
@@ -98,7 +103,7 @@ Only the effect statements the records make.
 |---|---|---|
 | Patch row added/removed, junction added/removed (composition) | live — `patchReload: live`; verified by mounting and unmounting a probe package without restarting; a profile edit applies to the running harness immediately | 11, 9 |
 | Config values (any volatile group) | live — re-read at the start of each operation | 11 |
-| `client.js` edit | next page load — bundles are read from disk, but a loaded page cannot swap a module face in place | 11, 12 |
+| `client.js` edit | next page load — bundles are read from disk, but a loaded page cannot swap a module face in place | 11, 12, 15 |
 | Host TS source edit (`src/*.ts`, e.g. the `findRow` fix) | next harness start — the module is imported once per process; `/status` kept returning the pre-fix reason string after the fix | 11, 10, 12 |
 | `StatusBoard` "recent" list | in-memory — a harness restart loses it; the archives on disk remain the durable record | 4 |
 | Native settings write (`ctx.settings` `update` / `replace` / `mutate`) | lands in the same profile-patch user layer; `applies: 'live'` is stated as honest for this entry | 14 |

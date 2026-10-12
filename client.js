@@ -127,10 +127,22 @@
     // containing block and overflow clip, and above the app's own layers; the
     // harness tokens make it read as the same surface family as the context
     // ring's dialog (ui-chat stat-dialog.module.css).
+    //
+    // SURFACE FILL (live report 2026-10-12, "not very clear"): the family's
+    // fill token, --dsw-specific-menu, is the shared MENU material and is
+    // deliberately translucent (45-58% alpha; the 94% variant applies only to
+    // macOS). Unlike the shipped dialogs, this panel has no MenuSurface opaque
+    // backing, so transcript and composer text showed straight through it and
+    // the labels read muddy. The panel now layers that translucent family fill
+    // OVER an opaque raised-layer token, so it keeps the theme's color and
+    // light/dark switch while staying opaque; the harness menu blur token is
+    // applied too (a no-op wherever the theme leaves it unset).
     '.dshac-panel{position:fixed;z-index:1100;box-sizing:border-box;',
     'width:min(430px,calc(100vw - 24px));max-height:min(70vh,520px);overflow:auto;overscroll-behavior:contain;',
     'padding:14px 16px;display:grid;gap:10px;border:0;border-radius:var(--dsw-radius-lg,10px);',
-    'background:var(--dsw-specific-menu,#1b1d22);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);',
+    'background:var(--dsw-specific-menu,#1b1d22) var(--dsw-alias-bg-layer-1,#1b1d22);',
+    'backdrop-filter:var(--dsw-menu-backdrop-filter,none);',
+    '--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);',
     'box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.45));',
     'color:var(--dsw-alias-label-secondary,inherit);font-size:12px;line-height:18px}',
     '.dshac-panel h4{margin:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary,inherit)}',
