@@ -318,14 +318,23 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 6. **A session with no recorded creation cwd** falls back to the harness launch
    directory, so two such sessions share one archive tree.
 7. **Tuning is still a bespoke panel (planned migration).** The dock popover
-   duplicates what the harness can already render for a composed row:
-   `settings.plugins.tab` is a live additive slot with a keyed
-   `settings.plugin.item` child, and `ctx.configEditor` already writes this
-   plugin's row. The planned step is to declare the fields natively so
-   Settings → Plugins renders (and localizes) the form, leaving the dock pill as
-   status plus a shortcut — before promising it, investigate how the shipping
-   `configurable` tab renders an *inserted* row. Recorded 2026-10-12 by user
-   decision; not started.
+   duplicates a surface the harness already owns for this plugin. The host
+   settings service projects every *active* entry's **volatile** Config schema
+   into a form (`packages/settings/settings/src/index.ts` — `describe()` →
+   `volatileForm()`), and every tunable group here is already volatile
+   (`src/config.ts:152-159`, `models` as a whole array because volatile nodes
+   cannot nest). The native write path is the same one this plugin's own route
+   uses (`configEditor.edit`), with `expectedRevision` conflict refusal, an
+   explicit `isVolatilePath` gate, and unset-restores-inherited semantics — so
+   Settings → Plugins (the `configurable` tab live in `settings.plugins.tab`)
+   is expected to render these fields already. Migration is therefore mostly
+   **deletion**: drop the popover's inputs and `POST /dsh-autocompact/config`,
+   keep the dock pill as status plus a link, and decide label/i18n sourcing
+   (schema text vs `locale/*.json`) and whether to suppress the auto page with
+   the settings service's `configure({ auto: false })`.
+   **Unverified:** rendering quality of the nested groups and the `models`
+   array in the generic form, and where its labels come from. Recorded
+   2026-10-12 by user decision; not started.
 
 ## Incident records
 
