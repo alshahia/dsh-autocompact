@@ -51,9 +51,18 @@ describe('client bundle contract', () => {
 
   it('fails safe on every fetch path', () => {
     // A throwing component would blank the slot entry, so each promise chain
-    // needs a catch and the render tree needs a null path.
+    // needs a catch.
     expect(client.match(/\.catch\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
-    expect(client).toContain('return null')
+  })
+
+  it('keeps the tuner reachable while idle', () => {
+    // Regression (2026-10-12, live profile): the dock row used to `return null`
+    // whenever no compaction was running and no recent one had finished. That
+    // also removed the pill, which is the only way to open the panel, so the
+    // tuner was unreachable exactly when the user wanted to configure it.
+    expect(client).not.toContain('!showRecent && !open) return null')
+    expect(client).toContain("className: idle ? 'dshac-row dshac-quiet' : 'dshac-row'")
+    expect(client).toContain('.dshac-quiet .dshac-pill{opacity:.4}')
   })
 })
 
@@ -72,6 +81,14 @@ describe('package wiring', () => {
 
   it('ships the bundle patch the loader composes', () => {
     expect(pkg.dsh.bundle.patch).toBe('./cordis.patch.yml')
+  })
+
+  it('exports ./package.json the way shipped client packages do', () => {
+    // locatePkgJson (packages/client/modules/src/index.ts) can fall back to
+    // createRequire(baseUrl).resolve('<name>/package.json'), and an exports map
+    // without that subpath throws ERR_PACKAGE_PATH_NOT_EXPORTED there — a
+    // negative client verdict that is cached until restart.
+    expect(pkg.exports['./package.json']).toBe('./package.json')
   })
 })
 

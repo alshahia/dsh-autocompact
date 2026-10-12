@@ -53,10 +53,20 @@ export interface GuiRoute {
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
 }
 
-/** Structural view of `ctx.configEditor` (the loader-owned raw config path). */
+/**
+ * Structural view of one Loader entry as `ctx.configEditor` hands it out.
+ *
+ * `configEditor.entries()` returns Loader entries, not plain rows: the profile
+ * patch id lives in `options.id` (verified live 2026-10-12 — the flat `id` is
+ * the tree id, e.g. `include:dsh-autocompact`). The shipped callers match the
+ * same way, e.g. `entries().find(row => row.options.id === 'first')` in
+ * `packages/settings/settings/src/index.ts`. Both shapes stay accepted because
+ * tests and older harness builds hand out flat entries.
+ */
 interface ConfigEditorEntry {
   id?: unknown
   name?: unknown
+  options?: { id?: unknown; name?: unknown }
 }
 
 interface ConfigEditorLike {
@@ -181,7 +191,10 @@ function findRow(editor: ConfigEditorLike): { entry: ConfigEditorEntry; override
     rows = []
   }
   const match = (entry: ConfigEditorEntry): boolean =>
-    entry.id === 'dsh-autocompact' || entry.name === 'dsh-autocompact'
+    entry.id === 'dsh-autocompact'
+    || entry.name === 'dsh-autocompact'
+    || entry.options?.id === 'dsh-autocompact'
+    || entry.options?.name === 'dsh-autocompact'
   const found = rows.find(row => match(row.entry))
   if (found !== undefined) return found
   try {

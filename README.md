@@ -38,7 +38,9 @@ bridge and a hand-edited JSON store).
   compacted summary, so the model (and a future agent) knows where the raw material is.
 - **Fully live configuration** — every tunable group is a schemastery `.volatile()`
   section; the engine re-reads them at the start of every operation, so an edit
-  applies to the next operation with **no restart and no reload**.
+  applies to the next operation with **no restart and no reload**. (Editing the
+  plugin's *source* is different — see
+  [Restart, reload, and hot application](#restart-reload-and-hot-application).)
 - **Visible in the Web UI** — a composer-dock indicator with elapsed time and phase,
   plus an inline tuning panel that writes changes back through the harness.
 
@@ -98,6 +100,23 @@ Hand-authored alternative — append to the profile patch:
 
 Both writers end up in the same place: the values live in the plugin's own config
 namespace, and the GUI panel persists edits through the harness config-editor path.
+
+## Restart, reload, and hot application
+
+Install and configuration are live; **code** is not. Verified on 0.2.1-alpha.2
+(2026-10-12):
+
+| Change | When it takes effect |
+|---|---|
+| Install/remove the bundle row or its delivery junction (a composition change) | **live** — the profile reloads its patch; a newly mounted package is imported immediately |
+| Any config value (every group is volatile) | **live** — re-read at the start of each operation |
+| `client.js` edit | next **page load** — bundles are served from disk, but a loaded page cannot swap a module face in place |
+| Host source edit (`src/*.ts`) | next **harness start** — the module is imported once per process |
+
+So a source change costs one restart, a client change costs one browser refresh, and
+neither is needed to *use* an already-installed bundle. The measurements behind this
+table are in
+[the live-install record](docs/incidents/2026-10-12-live-profile-install.md#restart-semantics-verified).
 
 ## Configuration reference
 
@@ -233,7 +252,7 @@ node node_modules\vitest\vitest.mjs run
 node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 ```
 
-- Verified on the 0.2.1-alpha.2 target (2026-10-12): **PASS** — 10 files / 110 tests;
+- Verified on the 0.2.1-alpha.2 target (2026-10-12): **PASS** — 10 files / 114 tests;
   `tsc -p tsconfig.json --noEmit` exit 0.
 - Invoke the tools through their **junctioned package entries** as above: this
   `node_modules` is a farm of package directories only, so there is no
@@ -308,6 +327,8 @@ evidence under [`docs/incidents/`](docs/incidents/):
 7. [`loader/volatile-update` is not a typed event to build on](docs/incidents/2026-10-12-loader-volatile-update-not-typed.md)
 8. [The package resolved only through test aliases, not at runtime](docs/incidents/2026-10-12-runtime-resolution-alias-only.md)
 9. [Mounting the bundle is a composition change with two traps](docs/incidents/2026-10-12-bundle-mount-composition-traps.md)
+10. [`configEditor` rows are Loader nodes, not `{id, name}` records](docs/incidents/2026-10-12-config-editor-entries-are-loader-nodes.md)
+11. [Live install into the running `web` profile (and what needs a restart)](docs/incidents/2026-10-12-live-profile-install.md)
 
 ## License
 

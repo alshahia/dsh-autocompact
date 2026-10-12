@@ -208,6 +208,24 @@ describe('GET ' + STATUS_ROUTE, () => {
     await route.handler(fakeRequest('GET', STATUS_ROUTE), res as unknown as ServerResponse)
     expect(res.json().capabilities.write).toBe(true)
   })
+
+  it('matches a real config-editor row, whose profile id lives in options', async () => {
+    // Verified against the live profile on 2026-10-12: `configEditor` hands out
+    // Loader entries, so the patch id is `options.id` while the flat `id` is the
+    // tree id (`include:<patchId>`). Reading only the flat fields reported
+    // `write: false` for a mounted, configurable plugin.
+    const entry = { id: 'include:dsh-autocompact', options: { id: 'dsh-autocompact', name: 'dsh-autocompact' } }
+    const editor = {
+      entries: () => [entry],
+      configuration: () => [{ entry, inherited: {}, override: { enabled: true } }],
+      edit: async () => {},
+    }
+    const { ctx } = fakeContext({ configEditor: editor })
+    const route = routeFor(createGuiRoutes(fakeEngine(), ctx), STATUS_ROUTE)
+    const res = new FakeResponse()
+    await route.handler(fakeRequest('GET', STATUS_ROUTE), res as unknown as ServerResponse)
+    expect(res.json().capabilities.write).toBe(true)
+  })
 })
 
 describe('POST ' + CONFIG_ROUTE, () => {
@@ -282,6 +300,26 @@ describe('POST ' + CONFIG_ROUTE, () => {
     expect(res.statusCode).toBe(400)
     expect(res.json().reason).toMatch(/invalid configuration/)
     expect(writes).toHaveLength(0)
+  })
+
+  it('writes through a real Loader-node entry', async () => {
+    const entry = { id: 'include:dsh-autocompact', options: { id: 'dsh-autocompact', name: 'dsh-autocompact' } }
+    const seen: unknown[] = []
+    const editor = {
+      entries: () => [entry],
+      configuration: () => [{ entry, inherited: {}, override: { enabled: true } }],
+      edit: async (
+        target: unknown,
+        change: (current: Record<string, unknown>, inherited: Record<string, unknown>) => Record<string, unknown>,
+      ) => { seen.push(target, change({ enabled: true }, {})) },
+    }
+    const { ctx } = fakeContext({ configEditor: editor })
+    const route = routeFor(createGuiRoutes(fakeEngine(), ctx), CONFIG_ROUTE)
+    const res = new FakeResponse()
+    await route.handler(fakeRequest('POST', CONFIG_ROUTE, { enabled: false }), res as unknown as ServerResponse)
+    expect(res.statusCode).toBe(200)
+    expect(seen[0]).toBe(entry)
+    expect(seen[1]).toEqual({ enabled: false })
   })
 
   it('rejects a non-JSON body', async () => {

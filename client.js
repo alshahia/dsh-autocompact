@@ -98,6 +98,8 @@
     'padding:2px 9px;cursor:pointer;opacity:.72}',
     '.dshac-pill:hover{opacity:1}',
     '.dshac-pill[aria-expanded="true"]{opacity:1}',
+    '.dshac-quiet .dshac-pill{opacity:.4}',
+    '.dshac-quiet:hover .dshac-pill{opacity:1}',
     '.dshac-dot{width:7px;height:7px;border-radius:50%;background:#3fb950;flex:none}',
     '.dshac-dot[data-on="false"]{background:#8b949e}',
     '.dshac-indicator{display:inline-flex;align-items:center;gap:8px;min-width:0}',
@@ -421,9 +423,12 @@
         }
         children.push(pill)
         if (open) children.push(h(Panel, { key: 'panel', strings: t, data: data, onClose: function () { setOpen(false) } }))
-        // Nothing is happening and the panel is closed: stay out of the way.
-        if (running === null && !showRecent && !open) return null
-        return h('div', { className: 'dshac-row' }, children)
+        // The pill is the only way into the tuner, so the row must render even
+        // while nothing is compressing. When idle it recedes (dshac-quiet)
+        // instead of disappearing: returning null here left the panel
+        // unreachable whenever no compaction was running or recently finished.
+        var idle = running === null && !showRecent && !open
+        return h('div', { className: idle ? 'dshac-row dshac-quiet' : 'dshac-row' }, children)
       }
 
       return {
