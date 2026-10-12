@@ -116,19 +116,32 @@
     'animation:dshac-slide 1.4s infinite ease-in-out}',
     '.dshac-ok{color:#3fb950}',
     '.dshac-bad{color:#f85149}',
-    '.dshac-panel{border:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:10px;',
-    'padding:10px 12px;display:grid;gap:8px;width:min(430px,100%);background:transparent}',
-    '.dshac-panel h4{margin:0;font-size:12px;font-weight:600}',
+    '.dshac-anchor{display:inline-flex;min-width:0}',
+    // The tuner is a FLOATING surface, never a row child: as an in-flow child
+    // of this dock row it stretched the composer bar, which shoved the message
+    // box and the transcript up the page (live report 2026-10-12). Fixed +
+    // portaled to <body> keeps it out of the composer's layout, out of every
+    // containing block and overflow clip, and above the app's own layers; the
+    // harness tokens make it read as the same surface family as the context
+    // ring's dialog (ui-chat stat-dialog.module.css).
+    '.dshac-panel{position:fixed;z-index:1100;box-sizing:border-box;',
+    'width:min(430px,calc(100vw - 24px));max-height:min(70vh,520px);overflow:auto;overscroll-behavior:contain;',
+    'padding:14px 16px;display:grid;gap:10px;border:0;border-radius:var(--dsw-radius-lg,10px);',
+    'background:var(--dsw-specific-menu,#1b1d22);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);',
+    'box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.45));',
+    'color:var(--dsw-alias-label-secondary,inherit);font-size:12px;line-height:18px}',
+    '.dshac-panel h4{margin:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary,inherit)}',
     '.dshac-field{display:grid;gap:2px}',
     '.dshac-field label{font-size:11px;opacity:.75}',
-    '.dshac-field input[type="text"],.dshac-field input[type="number"]{border:1px solid currentColor;',
+    '.dshac-field input[type="text"],.dshac-field input[type="number"]{border:1px solid var(--dsw-alias-border-l1,currentColor);',
     'border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:12px;padding:3px 6px;width:100%}',
     '.dshac-check{display:flex;align-items:center;gap:6px}',
-    '.dshac-actions{display:flex;align-items:center;gap:8px}',
-    '.dshac-actions button{border:1px solid currentColor;border-radius:6px;background:transparent;color:inherit;',
-    'font:inherit;font-size:11px;padding:3px 10px;cursor:pointer}',
+    '.dshac-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '.dshac-actions button{border:1px solid var(--dsw-alias-border-l1,currentColor);border-radius:6px;background:transparent;',
+    'color:inherit;font:inherit;font-size:11px;padding:3px 10px;cursor:pointer}',
+    '.dshac-actions button:hover{background:var(--dsw-alias-interactive-bg-hover,transparent)}',
     '.dshac-note{font-size:11px;opacity:.75}',
-    '.dshac-note pre{margin:4px 0 0;white-space:pre-wrap;font-size:10.5px;opacity:.9}',
+    '.dshac-note pre{margin:4px 0 0;white-space:pre-wrap;font-size:10.5px;opacity:.9;max-height:160px;overflow:auto}',
     '@keyframes dshac-bounce{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}',
     '@keyframes dshac-slide{0%{left:-40%}100%{left:100%}}',
     '@media (prefers-reduced-motion: reduce){.dshac-dots i,.dshac-bar span{animation:none}',
@@ -160,7 +173,25 @@
     id: 'dsh-autocompact',
     factory: function (require) {
       var React = require('react')
+      // `react-dom` is a shell platform module exactly like `react` (the frozen
+      // module table in packages/client/web/src/platform.ts, seeded by seed.ts):
+      // shipped client bundles resolve it through the same require, and the
+      // context ring's own trigger-anchored dialog uses createPortal for the
+      // same reason this panel does.
+      var ReactDOM = require('react-dom')
+      var createPortal = ReactDOM && ReactDOM.createPortal
       var h = React.createElement
+
+      /** Distance kept between the pill and the panel floating above it. */
+      var PANEL_GAP = 8
+      /** Distance kept between the panel and each viewport edge. */
+      var PANEL_MARGIN = 12
+      /**
+       * Unplaced portal style: hidden but laid out, so the first placement pass
+       * measures real panel dimensions instead of a zero-height guess (the
+       * harness's own `MEASURE_STYLE`).
+       */
+      var MEASURE_STYLE = { visibility: 'hidden', left: 0, top: 0 }
 
       /** Poll the host status route; the interval relaxes while nothing runs. */
       function useStatus(sessionId) {
@@ -219,6 +250,106 @@
           return function () { clearInterval(id) }
         }, [active])
         return now
+      }
+
+      /**
+       * Fixed-position placement above the anchor, clamped inside the viewport.
+       *
+       * Mirrors the harness's own trigger-anchored dialog seat (ui-primitives
+       * `useAnchoredPosition`, consumed by ui-chat's `useStatDialog`) with one
+       * addition: the ROW is observed too. This row grows and shrinks while a
+       * compaction runs — the progress strip appears beside the pill — which
+       * moves the pill without a window resize or a scroll, and an anchor-only
+       * watch would leave the panel behind.
+       */
+      function usePanelPosition(open, anchorRef, panelRef, rowRef) {
+        var state = React.useState(null)
+        var position = state[0]
+        var setPosition = state[1]
+        React.useLayoutEffect(function () {
+          if (!open) {
+            setPosition(null)
+            return undefined
+          }
+          var place = function () {
+            var anchor = anchorRef.current
+            var panel = panelRef.current
+            if (!anchor || !panel || typeof anchor.getBoundingClientRect !== 'function') return
+            var rect = anchor.getBoundingClientRect()
+            var width = panel.offsetWidth || 0
+            var height = panel.offsetHeight || 0
+            // Right-aligned on the pill (it sits at the composer's right edge,
+            // beside the context ring), then clamped so a narrow window cannot
+            // push the panel off-screen.
+            var left = rect.right - width
+            var top = rect.top - PANEL_GAP - height
+            if (width > 0) left = Math.min(Math.max(left, PANEL_MARGIN), window.innerWidth - width - PANEL_MARGIN)
+            if (height > 0) top = Math.min(Math.max(top, PANEL_MARGIN), window.innerHeight - height - PANEL_MARGIN)
+            setPosition({ left: left, top: top })
+          }
+          place()
+          // Capture phase: nested scrollers (the transcript) count too.
+          window.addEventListener('scroll', place, true)
+          window.addEventListener('resize', place)
+          var observers = []
+          if (typeof ResizeObserver !== 'undefined') {
+            var watch = function (element) {
+              if (!element) return
+              var observer = new ResizeObserver(place)
+              observer.observe(element)
+              observers.push(observer)
+            }
+            watch(anchorRef.current)
+            watch(panelRef.current)
+            watch(rowRef.current)
+          }
+          return function () {
+            window.removeEventListener('scroll', place, true)
+            window.removeEventListener('resize', place)
+            for (var index = 0; index < observers.length; index += 1) observers[index].disconnect()
+          }
+        }, [open, anchorRef, panelRef, rowRef])
+        return position
+      }
+
+      /**
+       * Popover dismissal: the pill's own click toggles the panel, a pointerdown
+       * or click outside closes it, Escape closes it and hands focus back to the
+       * pill. The click listener is a capture listener because keyboard
+       * activation of a sibling control fires click without pointerdown; the
+       * opening click cannot self-close because these listeners attach only
+       * after it completed.
+       */
+      function useDismiss(open, setOpen, anchorRef, panelRef, triggerRef) {
+        React.useEffect(function () {
+          if (!open) return undefined
+          var inside = function (target) {
+            if (!(target instanceof Node)) return false
+            var anchor = anchorRef.current
+            var panel = panelRef.current
+            return (anchor && anchor.contains(target)) === true
+              || (panel && panel.contains(target)) === true
+          }
+          var closeOutside = function (event) {
+            if (!inside(event.target)) setOpen(false)
+          }
+          var onKeyDown = function (event) {
+            if (event.key !== 'Escape') return
+            setOpen(false)
+            var trigger = triggerRef.current
+            if (trigger && typeof trigger.focus === 'function') {
+              try { trigger.focus({ preventScroll: true }) } catch (error) { /* focus is a nicety */ }
+            }
+          }
+          document.addEventListener('pointerdown', closeOutside)
+          document.addEventListener('click', closeOutside, true)
+          document.addEventListener('keydown', onKeyDown)
+          return function () {
+            document.removeEventListener('pointerdown', closeOutside)
+            document.removeEventListener('click', closeOutside, true)
+            document.removeEventListener('keydown', onKeyDown)
+          }
+        }, [open, setOpen, anchorRef, panelRef, triggerRef])
       }
 
       function Indicator(props) {
@@ -358,7 +489,26 @@
           )
         }
 
-        return h('div', { className: 'dshac-panel' },
+        // Focus the surface on open so the keyboard reaches its fields and so
+        // Escape and wheel-scrolling behave before the first Tab; closing hands
+        // focus back to the pill. Non-modal on purpose: no focus trap, the
+        // transcript underneath stays usable.
+        React.useEffect(function () {
+          var panel = props.panelRef && props.panelRef.current
+          if (!panel || typeof panel.focus !== 'function') return
+          try { panel.focus({ preventScroll: true }) } catch (error) { /* focus is a nicety */ }
+        }, [])
+
+        return h('div', {
+          ref: props.panelRef,
+          className: 'dshac-panel',
+          role: 'dialog',
+          'aria-label': t.title,
+          tabIndex: -1,
+          style: props.pos
+            ? { left: props.pos.left + 'px', top: props.pos.top + 'px' }
+            : MEASURE_STYLE,
+        },
           h('h4', null, t.title),
           h('div', { className: 'dshac-note' }, statusLine({ strings: t, data: data })),
           h('div', { className: 'dshac-check' },
@@ -394,21 +544,37 @@
         var openState = React.useState(false)
         var open = openState[0]
         var setOpen = openState[1]
+        var anchorRef = React.useRef(null)
+        var pillRef = React.useRef(null)
+        var panelRef = React.useRef(null)
+        var rowRef = React.useRef(null)
+        // Placement and dismissal mirror the harness's own trigger-anchored
+        // dialog; the row ref is ours because the progress strip appearing
+        // beside the pill moves it without a window resize.
+        var position = usePanelPosition(open, anchorRef, panelRef, rowRef)
+        useDismiss(open, setOpen, anchorRef, panelRef, pillRef)
         var running = data && data.running && typeof data.running === 'object' ? data.running : null
         var now = useTicker(running !== null)
         var recent = data && Array.isArray(data.recent) && data.recent.length > 0 ? data.recent[0] : null
         var showRecent = running === null && recent !== null && Date.now() - recent.finishedAt < RECENT_MS
         var enabled = !data || data.enabled !== false
 
-        var pill = h('button', {
-          type: 'button',
-          className: 'dshac-pill',
-          onClick: function () { setOpen(!open) },
-          'aria-expanded': open ? 'true' : 'false',
-          title: t.title,
-        },
-          h('span', { className: 'dshac-dot', 'data-on': enabled ? 'true' : 'false' }),
-          h('span', null, t.open),
+        // The anchor shrink-wraps the pill so placement measures the pill
+        // itself; anchoring to the row would let the progress strip widen and
+        // re-center the floating panel while a compaction runs.
+        var pill = h('span', { className: 'dshac-anchor', ref: anchorRef },
+          h('button', {
+            type: 'button',
+            ref: pillRef,
+            className: 'dshac-pill',
+            onClick: function () { setOpen(!open) },
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open ? 'true' : 'false',
+            title: t.title,
+          },
+            h('span', { className: 'dshac-dot', 'data-on': enabled ? 'true' : 'false' }),
+            h('span', null, t.open),
+          ),
         )
 
         var children = []
@@ -422,13 +588,31 @@
           }, (recent.ok === false ? t.failed : t.recent) + (recent.detail ? ' · ' + recent.detail : '')))
         }
         children.push(pill)
-        if (open) children.push(h(Panel, { key: 'panel', strings: t, data: data, onClose: function () { setOpen(false) } }))
         // The pill is the only way into the tuner, so the row must render even
         // while nothing is compressing. When idle it recedes (dshac-quiet)
         // instead of disappearing: returning null here left the panel
         // unreachable whenever no compaction was running or recently finished.
         var idle = running === null && !showRecent && !open
-        return h('div', { className: idle ? 'dshac-row dshac-quiet' : 'dshac-row' }, children)
+        var row = h('div', {
+          ref: rowRef,
+          className: idle ? 'dshac-row dshac-quiet' : 'dshac-row',
+        }, children)
+        if (!open) return row
+        // Portaled to <body>. Outside the composer's layout flow (so the bar
+        // cannot be pushed), outside its containing blocks and overflow clips
+        // (a `position: fixed` element inside a backdrop-filtered ancestor is
+        // still trapped by it), and above the app's layers via z-index 1100.
+        // Without createPortal the panel degrades to rendering here — still
+        // position:fixed from the stylesheet, so it never rejoins the row's
+        // flow even on a shell that does not share react-dom.
+        var panel = h(Panel, {
+          strings: t,
+          data: data,
+          pos: position,
+          panelRef: panelRef,
+          onClose: function () { setOpen(false) },
+        })
+        return h(React.Fragment, null, row, createPortal ? createPortal(panel, document.body) : panel)
       }
 
       return {

@@ -221,15 +221,20 @@ loader (`window.__ModuleLoader__`) that registers **one** composer-dock visual:
 
 - an animated **“compacting…”** indicator with an elapsed timer and the current phase,
   plus a short success/failure chip after a compaction finishes;
-- an **Auto-compact** button opening an inline tuning panel (enable toggle, trigger
-  ratio/tokens — blank means unset — retain tokens, archive root, summary
+- an **Auto-compact** button opening a **floating** tuning panel (enable toggle,
+  trigger ratio/tokens — blank means unset — retain tokens, archive root, summary
   provider/model) that writes back with `POST /dsh-autocompact/config` and confirms
-  “applies on the next step”;
+  “applies on the next step”. The panel is portaled to `<body>` and fixed above the
+  pill, clamped to a 12 px viewport margin and capped in height with its own scroll,
+  so opening it never moves the composer, the message box or the transcript; it
+  closes on a re-click, on an outside press, on Escape (which returns focus to the
+  pill) and re-anchors when the row, the pill or the panel changes size;
 - **adaptive polling** of `GET /dsh-autocompact/status`: ~900 ms while a compaction is
   running, ~3 s while idle;
 - fail-safe: if anything is missing or throws, it renders nothing and the chat is
   never disturbed. It registers exactly one `conversation.composer.dock` visual and
-  takes `react` from the shell's module table; there is no build step for it either.
+  takes `react` and `react-dom` (for the portal) from the shell's platform module
+  table; there is no build step for it either.
 
 Why polling: this harness version exposes no client-side compaction event, and the
 `conversation.chat.node` slot is keyed by a fixed node-kind table whose compaction
@@ -252,7 +257,7 @@ node node_modules\vitest\vitest.mjs run
 node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 ```
 
-- Verified on the 0.2.1-alpha.2 target (2026-10-12): **PASS** — 10 files / 114 tests;
+- Verified on the 0.2.1-alpha.2 target (2026-10-12): **PASS** — 10 files / 120 tests;
   `tsc -p tsconfig.json --noEmit` exit 0.
 - Invoke the tools through their **junctioned package entries** as above: this
   `node_modules` is a farm of package directories only, so there is no
@@ -312,6 +317,15 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
    `compaction-handoff` registers `ctx.compaction` twice.
 6. **A session with no recorded creation cwd** falls back to the harness launch
    directory, so two such sessions share one archive tree.
+7. **Tuning is still a bespoke panel (planned migration).** The dock popover
+   duplicates what the harness can already render for a composed row:
+   `settings.plugins.tab` is a live additive slot with a keyed
+   `settings.plugin.item` child, and `ctx.configEditor` already writes this
+   plugin's row. The planned step is to declare the fields natively so
+   Settings → Plugins renders (and localizes) the form, leaving the dock pill as
+   status plus a shortcut — before promising it, investigate how the shipping
+   `configurable` tab renders an *inserted* row. Recorded 2026-10-12 by user
+   decision; not started.
 
 ## Incident records
 
@@ -329,6 +343,7 @@ evidence under [`docs/incidents/`](docs/incidents/):
 9. [Mounting the bundle is a composition change with two traps](docs/incidents/2026-10-12-bundle-mount-composition-traps.md)
 10. [`configEditor` rows are Loader nodes, not `{id, name}` records](docs/incidents/2026-10-12-config-editor-entries-are-loader-nodes.md)
 11. [Live install into the running `web` profile (and what needs a restart)](docs/incidents/2026-10-12-live-profile-install.md)
+12. [An inline dock panel pushed the composer up the page](docs/incidents/2026-10-12-panel-floats-above-composer.md)
 
 ## License
 

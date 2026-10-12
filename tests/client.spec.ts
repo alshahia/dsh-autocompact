@@ -24,11 +24,19 @@ describe('client bundle contract', () => {
     expect(client).toContain("require('react')")
   })
 
-  it('requests no other package as an external', () => {
-    // The shell's module table only guarantees `react`; a `require` of another
-    // package name is the fail-fast signal that a build step would be needed.
+  it('requests only shell platform modules as externals', () => {
+    // The shell freezes a module table at boot and resolves every bundle's
+    // require against exactly that set: react, react/jsx-runtime, react-dom,
+    // react-dom/client, @deepseek-ai/cordis, dsh-client-store,
+    // dsh-client-ui-slots, dsh-client-ui-primitives, dsh-client-ui-dockkit
+    // (packages/client/web/src/platform.ts -> seed.ts). This bundle needs
+    // `react` for elements and hooks and `react-dom` for the portal that keeps
+    // the tuner out of the composer's layout; any other name would mean a
+    // build step is required (CORRECTED 2026-10-12: this test previously
+    // asserted ['react'] alone, on the wrong premise that the table shares
+    // nothing else).
     const requested = [...client.matchAll(/require\((['"])([^'"]+)\1\)/g)].map(match => match[2])
-    expect(requested).toEqual(['react'])
+    expect(requested).toEqual(['react', 'react-dom'])
   })
 
   it('renders into the composer dock through the slots service', () => {
@@ -63,6 +71,57 @@ describe('client bundle contract', () => {
     expect(client).not.toContain('!showRecent && !open) return null')
     expect(client).toContain("className: idle ? 'dshac-row dshac-quiet' : 'dshac-row'")
     expect(client).toContain('.dshac-quiet .dshac-pill{opacity:.4}')
+  })
+
+  // The tuner is a floating surface, and these assertions are source-shape only:
+  // this repo's vitest runs with `environment: 'node'` and links no react/jsdom,
+  // so placement and dismissal cannot be rendered here. The structural contract
+  // below is what a regression would break (verified in the browser instead).
+  it('floats the tuner out of the dock row instead of pushing the composer', () => {
+    // Regression (2026-10-12, live report): the panel was pushed as a sibling of
+    // the pill INSIDE the dock row, so opening it stretched the composer bar and
+    // shoved the message box and the transcript up the page.
+    expect(client).toContain('createPortal')
+    expect(client).toContain('createPortal(panel, document.body)')
+    expect(client).not.toContain('children.push(h(Panel')
+    expect(client).toContain("'.dshac-panel{position:fixed;z-index:1100;box-sizing:border-box;'")
+  })
+
+  it('caps the floating panel and scrolls it internally', () => {
+    // An uncapped tuner clamps to the viewport margin and covers the transcript;
+    // the cap keeps it a popover rather than a takeover.
+    expect(client).toContain('max-height:min(70vh,520px);overflow:auto;overscroll-behavior:contain;')
+  })
+
+  it('places the panel above the pill and keeps it inside the viewport', () => {
+    expect(client).toContain('var PANEL_GAP = 8')
+    expect(client).toContain('var PANEL_MARGIN = 12')
+    expect(client).toContain('var top = rect.top - PANEL_GAP - height')
+    expect(client).toContain('window.innerWidth - width - PANEL_MARGIN')
+  })
+
+  it('re-tracks placement when the row, anchor, or panel changes size', () => {
+    // The progress strip appearing beside the pill MOVES the pill without a
+    // window resize or a scroll, so the row needs its own observer.
+    expect(client).toContain('ResizeObserver')
+    expect(client).toContain('watch(rowRef.current)')
+    expect(client).toContain("window.addEventListener('scroll', place, true)")
+  })
+
+  it('closes on re-click, outside pointerdown, outside click, and Escape', () => {
+    expect(client).toContain('setOpen(!open)')
+    expect(client).toContain("document.addEventListener('pointerdown', closeOutside)")
+    expect(client).toContain("document.addEventListener('click', closeOutside, true)")
+    expect(client).toContain("if (event.key !== 'Escape') return")
+    expect(client).toContain("'aria-haspopup': 'dialog'")
+    expect(client).toContain("role: 'dialog'")
+  })
+
+  it('keeps the progress indicator in the dock row, not inside the panel', () => {
+    // The indicator must stay visible while the tuner is closed, so it stays a
+    // row child while only the tuner is portaled.
+    expect(client).toContain('children.push(h(Indicator')
+    expect(client).toContain("'aria-live': 'polite'")
   })
 })
 
