@@ -208,7 +208,7 @@ composition has none — compaction and archiving keep working).
 
 | Route | Behaviour |
 |---|---|
-| `GET /dsh-autocompact/status` | `{ plugin, enabled, running, recent, session, config: { effective, raw }, capabilities }`. `running` is `{ sessionId, phase, detail, startedAt, elapsedMs }` or `null`; `recent` holds up to 3 finished compactions; `session` is the pressure preview for `?session=<id>` (or the only live session); `capabilities.write` says whether tuning can be persisted, with a paste-ready `snippet` fallback. |
+| `GET /dsh-autocompact/status` | `{ plugin, enabled, running, recent, session, config: { effective, raw }, capabilities }`. `running` is `{ sessionId, phase, detail, startedAt, elapsedMs }` or `null`; `recent` holds up to 8 finished compactions (`RECENT_LIMIT`, `src/status.ts:46`); `session` is the pressure preview for `?session=<id>` (or the only live session); `capabilities.write` says whether tuning can be persisted, with a paste-ready `snippet` fallback. |
 | `POST /dsh-autocompact/config` | Partial JSON patch, merged one level deep inside a group section (`null` removes a key). Rejects unknown keys (400), a body over 64 KiB (400), a config the schema cannot resolve (400), and a cross-origin request (403). `409` when the composition has no config editor or no row to write, with the reason. |
 
 The prefix is deliberately **not** `/plugins`: that prefix is owned by the
@@ -322,7 +322,7 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
    settings service projects every *active* entry's **volatile** Config schema
    into a form (`packages/settings/settings/src/index.ts` — `describe()` →
    `volatileForm()`), and every tunable group here is already volatile
-   (`src/config.ts:152-159`, `models` as a whole array because volatile nodes
+   (`src/config.ts:152-160`, `models` as a whole array because volatile nodes
    cannot nest). The native write path is the same one this plugin's own route
    uses (`configEditor.edit`), with `expectedRevision` conflict refusal, an
    explicit `isVolatilePath` gate, and unset-restores-inherited semantics — so
@@ -335,6 +335,13 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
    **Unverified:** rendering quality of the nested groups and the `models`
    array in the generic form, and where its labels come from. Recorded
    2026-10-12 by user decision; not started.
+8. **The two HTTP routes are not behind the GUI's session gate.** They are
+   registered directly on the composition's web server, so
+   `GET /dsh-autocompact/status` — and the `POST /dsh-autocompact/config` write —
+   answer with no session cookie (re-verified 2026-10-12: `200`, no cookie).
+   Treat them as local/loopback surfaces only and do not expose the port. The
+   planned native-settings migration (limitation 7) deletes the write route and
+   removes half of this exposure.
 
 ## Incident records
 
@@ -353,6 +360,17 @@ evidence under [`docs/incidents/`](docs/incidents/):
 10. [`configEditor` rows are Loader nodes, not `{id, name}` records](docs/incidents/2026-10-12-config-editor-entries-are-loader-nodes.md)
 11. [Live install into the running `web` profile (and what needs a restart)](docs/incidents/2026-10-12-live-profile-install.md)
 12. [An inline dock panel pushed the composer up the page](docs/incidents/2026-10-12-panel-floats-above-composer.md)
+13. [A test pinned the bundle's externals to a list that was never the rule](docs/incidents/2026-10-12-externals-list-test-premise.md)
+14. [The native settings surface already serves this plugin's Config](docs/incidents/2026-10-12-native-settings-surface-already-serves-us.md)
+
+Also in `docs/`:
+
+- [INCIDENT-INDEX.md](docs/INCIDENT-INDEX.md) — one-page catalog: issue, root
+  cause, fix, status, evidence class.
+- [RETRO.md](docs/RETRO.md) — the process failures behind these records and the
+  rules they produced.
+- [PLUGIN-GUIDE.md](docs/PLUGIN-GUIDE.md) — the shortest path to a working
+  plugin on this target, with the trap list.
 
 ## License
 

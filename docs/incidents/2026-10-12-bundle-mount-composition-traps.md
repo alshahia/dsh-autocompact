@@ -2,7 +2,10 @@
 
 - **Date:** 2026-10-12
 - **Area:** profile `cordis.patch.yml` / `dsh.bundle.patch`
-- **Status:** VERIFIED boot-free (`--dump-config`); the live install is a user decision
+- **Status:** VERIFIED boot-free (`--dump-config`); **superseded on the install
+  question** — the live install was performed the same day and is recorded in
+  `2026-10-12-live-profile-install.md` (host half, live config, legacy retirement
+  and client-half registration all PASS there)
 
 ## Why this is an incident
 
