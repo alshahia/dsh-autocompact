@@ -8,9 +8,86 @@
  *
  * @module dsh-autocompact/types
  */
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+
+declare module '@deepseek-ai/dsh-llm' {
+  /**
+   * This plugin's own message source.
+   *
+   * The harness has no shared catch-all "plugin" kind: every producer declares
+   * its own in its own module, and consumers fall through unknown kinds. Both
+   * messages this plugin contributes to a conversation carry it — the drop
+   * tombstone (a `notice` of what was removed) and the pressure advisory the
+   * model receives before the engine compacts on its own.
+   */
+  interface MessageSourceMap {
+    'dsh-autocompact': { kind: 'dsh-autocompact' } & ContextFormed
+  }
+}
 
 /** How a ratio limit and an absolute token limit combine when both are set. */
 export type TriggerMode = 'first' | 'tokens'
+
+/**
+ * Which measurement the memory decide band compares against its budget.
+ *
+ * - `surface`: the conversation surface alone. This is what a drop can
+ *   actually free, so it is the honest unit for a decide band.
+ * - `total`: the whole next request, including the system prompt, tool
+ *   schemas, and attachments. This is what the provider bills, and it is the
+ *   unit in which a context window overflows.
+ */
+export type MemoryDenominator = 'surface' | 'total'
+
+/**
+ * The pressure band at which the model is invited to drop history it no longer
+ * needs. The band is derived from the routed model's context window (a ratio)
+ * and/or an absolute token count; an absolute count keeps the band usable on an
+ * adapter that declares no window.
+ */
+export interface MemoryBudgetConfig {
+  /** Fraction of the context window that is the decide band; (0, 1]. 0 means "unset" (inherit the 0.30 default). */
+  ratio?: number
+  /** Absolute decide-band budget in tokens; positive integer. 0 means "unset". */
+  tokens?: number
+  /** Which measurement is compared against the budget. Default "surface". */
+  denominator?: MemoryDenominator
+  /** Warn once the band is this fraction consumed; (0, 1]. Default 0.9. */
+  warnAt?: number
+}
+
+/** Guard rails that keep a model-directed drop from costing more than it frees. */
+export interface MemoryLimitsConfig {
+  /** A drop must net at least this many tokens to be accepted. Default 2000. */
+  minFreedTokens?: number
+  /** Queued drop operations allowed per turn. Default 2. */
+  maxOpsPerTurn?: number
+  /** Token budget for one `inspect` step map. Default 1500. */
+  mapTokens?: number
+}
+
+/** Protection and archive rules for the drop path. */
+export interface MemoryPolicyConfig {
+  /**
+   * Never let a dropped span take a user message off the surface without its
+   * text: every user message inside the span is re-emitted verbatim in the
+   * replacement tombstone. Default true.
+   */
+  protectUserMessages?: boolean
+  /** "block" (default) refuses a drop whose archive write failed; "proceed" warns and drops anyway. */
+  archiveOnDrop?: 'block' | 'proceed'
+  /** Token budget for one `recall` result. Default 1200. */
+  recallMaxTokens?: number
+}
+
+/** The model-directed memory surface: budget, limits, and drop policy. */
+export interface MemoryConfig {
+  /** false removes the tool, the advisory nudge, and the deferred drop apply. Default true. */
+  enabled?: boolean
+  budget?: MemoryBudgetConfig
+  limits?: MemoryLimitsConfig
+  policy?: MemoryPolicyConfig
+}
 
 export interface TriggerConfig {
   /** Combination rule when both limits are set. Defaults to "first". */
@@ -87,6 +164,8 @@ export interface HandoffConfig {
   enabled?: boolean
   /** Per-model presets; exact provider+model match, field-wise merge over globals. */
   models?: ModelPreset[]
+  /** Model-directed memory management (inspect/plan/apply/pin/recall). */
+  memory?: MemoryConfig
 }
 
 /**
@@ -103,4 +182,11 @@ export interface ResolvedHandoffConfig {
   retries: { compactionRetries: number; maxOverflowRetries: number }
   enabled: boolean
   models: ModelPreset[]
+  memory: {
+    enabled: boolean
+    /** `ratio` is always present: an unset pair inherits the 0.30 default. */
+    budget: { ratio: number; tokens?: number; denominator: MemoryDenominator; warnAt: number }
+    limits: { minFreedTokens: number; maxOpsPerTurn: number; mapTokens: number }
+    policy: { protectUserMessages: boolean; archiveOnDrop: 'block' | 'proceed'; recallMaxTokens: number }
+  }
 }

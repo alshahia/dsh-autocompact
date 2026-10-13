@@ -29,7 +29,7 @@
 import z from '@deepseek-ai/schemastery'
 import type { Volatile } from '@deepseek-ai/cordis'
 import type {
-  ArchiveConfig, HandoffConfig, ModelPreset, ResolvedHandoffConfig, RetainConfig,
+  ArchiveConfig, HandoffConfig, MemoryDenominator, ModelPreset, ResolvedHandoffConfig, RetainConfig,
   RetriesConfig, SummarizationConfig, TriggerConfig, TriggerMode,
 } from './types.ts'
 
@@ -37,6 +37,18 @@ import type {
 const UPSTREAM_TRIGGER_RATIO = 0.8
 const DEFAULT_MAX_TOKENS = 8192
 const DEFAULT_ROOT = '.dsh/handoffs'
+/**
+ * Memory decide-band defaults. `ratio` always resolves (0 reads as "not
+ * configured", like the trigger's own 0-means-unset convention): the plugin's
+ * documented default is a 30% conversation budget with an advisory at 90% of
+ * it, so a composition that never mentions `memory` still gets the feature.
+ */
+const DEFAULT_MEMORY_BUDGET_RATIO = 0.3
+const DEFAULT_MEMORY_WARN_AT = 0.9
+const DEFAULT_MIN_FREED_TOKENS = 2000
+const DEFAULT_MAX_OPS_PER_TURN = 2
+const DEFAULT_MAP_TOKENS = 1500
+const DEFAULT_RECALL_TOKENS = 1200
 
 /** Reported once per distinct problem; cleared whenever the live values change. */
 export type ConfigWarn = (message: string) => void
@@ -56,6 +68,12 @@ export interface HandoffVolatileConfig {
   readonly archive: LiveGroup<{ root?: string; gitIgnore?: boolean; onFailure?: 'block' | 'proceed' }>
   readonly summarization: LiveGroup<{ provider?: string; model?: string; maxTokens?: number }>
   readonly retries: LiveGroup<{ compactionRetries?: number; maxOverflowRetries?: number }>
+  readonly memory: LiveGroup<{
+    enabled?: boolean
+    budget?: { ratio?: number; tokens?: number; denominator?: MemoryDenominator; warnAt?: number }
+    limits?: { minFreedTokens?: number; maxOpsPerTurn?: number; mapTokens?: number }
+    policy?: { protectUserMessages?: boolean; archiveOnDrop?: 'block' | 'proceed'; recallMaxTokens?: number }
+  }>
   readonly models: LiveGroup<readonly {
     provider?: string
     model?: string
@@ -104,6 +122,34 @@ const summarizationGroup = () => z.object({
 const retriesGroup = () => z.object({
   compactionRetries: z.number().step(1).min(0).default(1),
   maxOverflowRetries: z.number().step(1).min(0).default(1),
+}).default({})
+
+/**
+ * The model-directed memory surface (see `src/memory.ts`). One volatile node
+ * for the whole group, with defaults on every leaf, so the Settings service can
+ * rewrite it while the plugin runs and a half-typed form still resolves.
+ *
+ * The band is expressed like the trigger: an absolute `tokens` limit keeps the
+ * band usable on an adapter that declares no context window.
+ */
+const memoryGroup = () => z.object({
+  enabled: z.boolean().default(true),
+  budget: z.object({
+    ratio: z.number().min(0).max(1).default(DEFAULT_MEMORY_BUDGET_RATIO),
+    tokens: z.number().step(1).min(0).default(0),
+    denominator: z.union([z.const('surface'), z.const('total')]).default('surface'),
+    warnAt: z.number().min(0.1).max(1).default(DEFAULT_MEMORY_WARN_AT),
+  }).default({}),
+  limits: z.object({
+    minFreedTokens: z.number().step(1).min(0).default(DEFAULT_MIN_FREED_TOKENS),
+    maxOpsPerTurn: z.number().step(1).min(1).max(8).default(DEFAULT_MAX_OPS_PER_TURN),
+    mapTokens: z.number().step(1).min(200).max(8000).default(DEFAULT_MAP_TOKENS),
+  }).default({}),
+  policy: z.object({
+    protectUserMessages: z.boolean().default(true),
+    archiveOnDrop: z.union([z.const('block'), z.const('proceed')]).default('block'),
+    recallMaxTokens: z.number().step(1).min(200).max(8000).default(DEFAULT_RECALL_TOKENS),
+  }).default({}),
 }).default({})
 
 /**
@@ -156,6 +202,7 @@ export const autocompactConfig = z.object({
   archive: archiveGroup().volatile(),
   summarization: summarizationGroup().volatile(),
   retries: retriesGroup().volatile(),
+  memory: memoryGroup().volatile(),
   models: z.array(presetGroup()).default([]).volatile(),
 })
 
@@ -295,6 +342,59 @@ function normalizePresets(raw: unknown, warn: ConfigWarn): ModelPreset[] {
   return presets
 }
 
+/** A plain object (not an array), or false. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Normalize the memory group into its resolved form.
+ *
+ * `ratio` always resolves: an unset ratio/tokens pair means "not configured",
+ * which inherits the documented 0.30 default exactly as the trigger inherits
+ * the upstream 0.8. Every other field clamps into its documented range, so a
+ * half-typed Settings form can never produce a band that fires on every step.
+ */
+function normalizeMemory(raw: unknown, warn: ConfigWarn): ResolvedHandoffConfig['memory'] {
+  const source = isRecord(raw) ? raw : {}
+  const budget = isRecord(source.budget) ? source.budget : {}
+  const limits = isRecord(source.limits) ? source.limits : {}
+  const policy = isRecord(source.policy) ? source.policy : {}
+  const ratio = positiveNumber(budget.ratio) ?? DEFAULT_MEMORY_BUDGET_RATIO
+  const tokens = positiveNumber(budget.tokens)
+  const warnAtRaw = positiveNumber(budget.warnAt) ?? DEFAULT_MEMORY_WARN_AT
+  if (warnAtRaw > 1) warn('memory.budget.warnAt is a fraction of the budget; clamped to 1')
+  const minFreedTokens = nonNegativeInteger(limits.minFreedTokens) ?? DEFAULT_MIN_FREED_TOKENS
+  const maxOpsPerTurn = positiveNumber(limits.maxOpsPerTurn) ?? DEFAULT_MAX_OPS_PER_TURN
+  const mapTokens = positiveNumber(limits.mapTokens) ?? DEFAULT_MAP_TOKENS
+  const recallMaxTokens = positiveNumber(policy.recallMaxTokens) ?? DEFAULT_RECALL_TOKENS
+  return {
+    enabled: source.enabled !== false,
+    budget: {
+      ratio: ratio > 1 ? 1 : ratio,
+      ...(tokens === undefined ? {} : { tokens: Math.floor(tokens) }),
+      denominator: budget.denominator === 'total' ? 'total' : 'surface',
+      warnAt: warnAtRaw > 1 ? 1 : warnAtRaw,
+    },
+    limits: {
+      minFreedTokens,
+      maxOpsPerTurn: clampInt(maxOpsPerTurn, 1, 8),
+      mapTokens: clampInt(mapTokens, 200, 8000),
+    },
+    policy: {
+      protectUserMessages: policy.protectUserMessages !== false,
+      archiveOnDrop: policy.archiveOnDrop === 'proceed' ? 'proceed' : 'block',
+      recallMaxTokens: clampInt(recallMaxTokens, 200, 8000),
+    },
+  }
+}
+
+/** Clamp a finite number into an integer range. */
+function clampInt(value: number, min: number, max: number): number {
+  const floored = Math.floor(value)
+  return floored < min ? min : floored > max ? max : floored
+}
+
 /** Discards notices during the silent probe pass. */
 const NOOP: ConfigWarn = () => {}
 
@@ -349,6 +449,7 @@ export class LiveConfigReader {
     const summarizationRaw = readGroup(source.summarization) ?? {}
     const retriesRaw = readGroup(source.retries) ?? {}
     const presets = normalizePresets(readGroup(source.models) ?? [], warn)
+    const memory = normalizeMemory(readGroup(source.memory), warn)
 
     const provider = text(summarizationRaw.provider)
     const model = text(summarizationRaw.model)
@@ -378,6 +479,7 @@ export class LiveConfigReader {
       },
       enabled,
       models: presets,
+      memory,
     }
 
     return resolved

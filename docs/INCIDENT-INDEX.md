@@ -1,33 +1,36 @@
 # Incident index
 
 Answering "did we already hit this?" for the auto-compact handoff engine from one page.
-Built from `docs/incidents/*.md` (15 records, every one dated 2026-10-12), `README.md`
+Built from `docs/incidents/*.md` (16 records: 15 dated 2026-10-12, one dated 2026-10-13), `README.md`
 and `docs/RETRO.md`. Everything below is transcribed from those files; `not recorded`
 means the record does not state that field. Dates and filenames are as they appear in
 the records.
 
 **How to read the numbers.** Test and file counts quoted below are **as of the record
 that states them**, not a current baseline: 7 files / 72 tests at record 1, 10 files /
-110 at records 8-9, 114 at record 10, 120 at records 12-13, and 10 files / **121
-tests** green at record 15, which is the current baseline (14:55 local, 2026-10-12).
+110 at records 8-9, 114 at record 10, 120 at records 12-13, 10 files / **121 tests**
+green at record 15, and **12 spec files / 158 tests** green at record 16 — the current
+baseline (09:05 local, 2026-10-13).
 Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 `Config` object literal.
 
 ## Cross-references
 
 - `../README.md` sections that carry overlapping content:
-  ["Incident records"](../README.md) (its numbered list 1-15 is the row order here),
+  ["Incident records"](../README.md) (its numbered list 1-16 is the row order here),
+  ["Session memory"](../README.md) (the feature record 16 describes),
   ["Known limitations"](../README.md) (item 8 records the unauthenticated-route gap),
   ["Restart, reload, and hot application"](../README.md) (restates the table in record 11),
   ["Web UI"](../README.md), ["Archives"](../README.md), ["Development"](../README.md),
   ["Trigger math"](../README.md) (record 5) and ["Retention clamping"](../README.md).
-- `incidents/` — the 15 records tabled below. Other `docs/` files: `RETRO.md` (process
+- `incidents/` — the 16 records tabled below. Other `docs/` files: `RETRO.md` (process
   reflection whose "Open risks handed over" table restates several items in
   "Open or deferred") and `PLUGIN-GUIDE.md` (the trap list distilled from these records).
 - Record-to-record links: 9 → 6 (client inject), 10 → 11 (restart semantics),
   12 → 10 (findRow fix), 12 → 11 (unauthenticated routes), 13 → 12 (same change),
   14 → 10 (findRow was this plugin's own bug), 15 → 12 (same panel, same client half)
-  and 15 → 11 (a `client.js` edit lands on the next page load).
+  and 15 → 11 (a `client.js` edit lands on the next page load); 16 is the record of the
+  feature whose own tests wrote it (memory step identity and surface ordering).
 
 ## Incident table
 
@@ -48,6 +51,7 @@ Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 | [2026-10-12-externals-list-test-premise.md](incidents/2026-10-12-externals-list-test-premise.md) | 2026-10-12 | `tests/client.spec.ts` pinned `client.js` externals to exactly `['react']` from an unverified comment, which would have rejected `react-dom` (the same change is also recorded in [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md)) | The platform rule was inferred from what the bundle happened to import and written down as law instead of being checked against the frozen `PLATFORM_MODULES` table | Require `react` and `react-dom` with a guarded inline fallback; the test was renamed to `'requests only shell platform modules as externals'` and asserts `['react', 'react-dom']` | fixed |
 | [2026-10-12-native-settings-surface-already-serves-us.md](incidents/2026-10-12-native-settings-surface-already-serves-us.md) | 2026-10-12 | README limitation 7 described the tuning migration as work on our side plus an unverified mechanism, when the native settings surface already renders this plugin's volatile Config | The documentation claim rested on an unchecked premise (the settings-service source was never read) | Knowledge recorded: `describe()` → `volatileForm()` already projects every active volatile Config and the native write path is the same `configEditor.edit` this plugin uses, so the migration is mostly deletion | knowledge recorded (migration deliberately not started) |
 | [2026-10-12-panel-surface-translucent.md](incidents/2026-10-12-panel-surface-translucent.md) | 2026-10-12 | The floating tuner was "not very clear": transcript and composer text showed through the panel, so its labels read muddy | The panel's only fill was `--dsw-specific-menu`, the shared MENU material at 45-58% alpha outside macOS, and unlike the shipped dialogs it has no `MenuSurface` opaque backing and had no `backdrop-filter` | Layer the translucent family fill over the opaque `--dsw-alias-bg-layer-1` (theme-tinted, fully opaque) and add `backdrop-filter: var(--dsw-menu-backdrop-filter)`; one regression assertion in `tests/client.spec.ts` | fixed (client half; visual check is a browser checkpoint) |
+| 16 | [2026-10-13-session-memory-step-attribution.md](incidents/2026-10-13-session-memory-step-attribution.md) | 2026-10-13 | After the session-memory planner was written, it merged steps across turns, and once one drop landed it attributed *no* surface node to any step | A harness `step` counter restarts inside each turn (`agent.ts:317`, reset at `:396`), and a `replace` puts the new tombstone event (highest seq) at the position of the span it replaced, so the surface stops being seq-ascending | Key steps as `turn.step` with a turn/step range grammar and a whole-step rule; attribute each node by `turn/start` containment through a binary search, and give the opening user message to the step it caused | FIXED (unit-verified: 12 files / 158 tests green; no live session yet) |
 
 ## What each record is authoritative for
 
@@ -65,6 +69,7 @@ Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 12. **panel-floats-above-composer** — When a slot owner lays your entry out in flow, everything rendered inside that entry is page layout; a panel belongs to the viewport and must watch the *anchor's ancestors'* size changes, not just the window's.
 13. **externals-list-test-premise** — Never pin a platform capability inside a test comment; assert against the frozen table (`PLATFORM_MODULES`) or the guide, because "illegal import" and "allowed but never declared" look identical from inside a bundle.
 14. **native-settings-surface-already-serves-us** — Before hand-writing a configuration UI, ask whether the harness already renders your Config: a schemastery `Config` whose groups are volatile gets a native, validated, revision-safe form for free, and a doc claim about platform behavior needs a file/line source or an "unverified" marker in the same sentence.
+16. **session-memory-step-attribution** — In DSH a step is `turn.step` (the counter restarts inside each turn), and a session surface touched by a `replace` is **not seq-ascending** (the replacement event carries a new, higher seq and sits at the old span's position) — so (a) never key an identifier, log line, or filter on a bare step number, (b) never walk a session log's surface with a monotonic cursor, and (c) attribute by containment rather than proximity, because the user message that *causes* a step is appended before the step's own start marker.
 15. **panel-surface-translucent** — `--dsw-specific-menu` is a menu *material*, not a panel background: it is 45% (dark) / 58% (light) alpha with a macOS-only 94% override, so a surface that uses it without a `MenuSurface` wrapper is translucent and unreadable on Windows. Outside `MenuSurface`, paint an opaque theme layer (`--dsw-alias-bg-layer-*`) under the fill; read alpha-bearing tokens in the theme source before shipping a surface.
 
 ## Verification matrix
@@ -88,6 +93,7 @@ Cells say only what the records state; `not recorded` means the record names no 
 | 13 externals-list | `vitest` 10 files / 120 tests pass; the renamed externals test asserts `['react', 'react-dom']` | not recorded | not recorded | not recorded | not recorded |
 | 14 native-settings | suite green after the doc-only change, no numbers stated (no code touched) | not recorded | not recorded | not recorded | not recorded |
 | 15 panel-surface | `node --check client.js` exit 0; `vitest` 10 files / **121 tests** exit 0 (14:55:26 local); 1 new assertion rejecting the old single-token declaration | `tsc -p tsconfig.json --noEmit` exit 0 (14:55 local) | not recorded (client-only change) | browser result **not machine-verified** (node environment, no react/jsdom, no style computation) | refresh the GUI: the panel surface must be opaque, with no transcript text visible through it |
+| 16 session-memory | `vitest` 12 files / **158 tests** exit 0 (09:05:40 local): `tests/memory.spec.ts` 18 (new), `tests/runtime.spec.ts` 13 (new), `tests/config.spec.ts` 18 → 24; a temporary probe spec isolated the ordering bug and was deleted | `tsc -p tsconfig.json --noEmit` exit 0 (09:05 local) | not recorded (no route touched) | not recorded | not recorded — the feature has not been loaded by a live harness (host source edit applies on the next harness start) |
 
 Evidence the records state outside those five channels: target-checkout source reading
 (records 1, 4, 6, 7, 9, 12, 13, 14, 15), the boot-free `--dump-config` composition check and
@@ -124,6 +130,7 @@ a user decision" was marked superseded by record 11.
 - **Plugin routes are not behind the GUI's browser-auth gate** — `/dsh-autocompact/status` answered `200` and `/dsh-autocompact/config` `405` without the session cookie while `/` required it; recorded as a deliberate gap that should be closed (trust check or explicit opt-in) before exposure beyond `127.0.0.1`. Mentioned in [live-profile-install](incidents/2026-10-12-live-profile-install.md) (primary), [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md) and [`RETRO.md`](RETRO.md) (re-verified `200`, no cookie; listed as an open risk).
 - **Web-UI Save is dead in the running process until one harness restart** — `/status` still reported `capabilities.write: false` with the pre-fix reason at 13:40 local, and [`RETRO.md`](RETRO.md) re-verified `write=false` with the same reason at ~13:55. Mentioned in [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md), [config-editor-entries-are-loader-nodes](incidents/2026-10-12-config-editor-entries-are-loader-nodes.md) and [`RETRO.md`](RETRO.md).
 - **Client-half visual result not yet verified** — the record states it needs one page refresh in the user's browser; the pixel placement is not machine-verified, so acceptance is the user observing that the composer bar, message box and transcript do not move. Mentioned in [live-profile-install](incidents/2026-10-12-live-profile-install.md), [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md) and [`RETRO.md`](RETRO.md).
+- **Session memory is unit-verified only and not yet loaded in a live session** — the feature is host code (`src/memory.ts`, `src/drop.ts`, `src/runtime.ts`, `src/tool.ts`), so it reaches the running harness only on the next harness start, and a real tool-loop turn has not exercised `plan` → `apply` → boundary flush end to end. Open by construction: pins live for the process lifetime only, and the `memory` config group has no dock-panel editor (config document / native settings form only). Recorded in [2026-10-13-session-memory-step-attribution](incidents/2026-10-13-session-memory-step-attribution.md) and `../README.md`, "Known limitations" item 9.
 - **Native settings migration — recorded, not started** — drop the popover inputs, `mergeConfig`, `POST /dsh-autocompact/config` and the form's strings, keep the dock pill as status plus a link; unverified are the generic-form rendering quality of the nested groups and the `models` array and the label/i18n source. Recorded in [native-settings-surface-already-serves-us](incidents/2026-10-12-native-settings-surface-already-serves-us.md) and `../README.md`, "Known limitations" item 7 (2026-10-12).
 - **`/compact-config` port — deferred, stated as NEEDS_USER_DECISION** — the old chat command is not ported. Recorded in [`RETRO.md`](RETRO.md) (open risks) and `../README.md`, "Known limitations" item 3.
 

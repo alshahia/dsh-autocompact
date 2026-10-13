@@ -34,10 +34,10 @@ export const CONFIG_ROUTE = '/dsh-autocompact/config'
 const MAX_BODY_BYTES = 64 * 1024
 /** Top-level configuration keys a patch may carry. */
 const CONFIG_KEYS = new Set([
-  'enabled', 'trigger', 'retain', 'archive', 'summarization', 'retries', 'models',
+  'enabled', 'trigger', 'retain', 'archive', 'summarization', 'retries', 'models', 'memory',
 ])
 /** Group keys merged one level deep; every other key is replaced wholesale. */
-const GROUP_KEYS = new Set(['trigger', 'retain', 'archive', 'summarization', 'retries'])
+const GROUP_KEYS = new Set(['trigger', 'retain', 'archive', 'summarization', 'retries', 'memory'])
 /** Epoch-millisecond cap on how long a stale "running" mark may live (10 min). */
 const STALE_RUNNING_MS = 600_000
 

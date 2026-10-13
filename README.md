@@ -36,6 +36,12 @@ bridge and a hand-edited JSON store).
   model-written summary, indexed, per project, per session.
 - **Archive pointer** — a short paragraph naming both files is prepended to the
   compacted summary, so the model (and a future agent) knows where the raw material is.
+- **Context-pressure memory (`session_memory`)** — the model can ask what is taking up
+  room, drop finished steps from the visible conversation, pin what must stay, and recall
+  a dropped span's verbatim text from its archive. Every drop is archived **before** the
+  surface is touched, user messages survive verbatim, and a drop happens at a step
+  boundary so the in-flight request is never edited. See
+  [Session memory](#session-memory).
 - **Fully live configuration** — every tunable group is a schemastery `.volatile()`
   section; the engine re-reads them at the start of every operation, so an edit
   applies to the next operation with **no restart and no reload**. (Editing the
@@ -92,6 +98,20 @@ Hand-authored alternative — append to the profile patch:
         retries:
           compactionRetries: 1
           maxOverflowRetries: 1
+        memory:
+          enabled: true
+          budget:
+            ratio: 0.3         # decide band as a fraction of the measured surface
+            denominator: surface  # 'surface' (default) | 'total'
+            warnAt: 0.9        # soft-nudge at this fraction of the budget
+          limits:
+            minFreedTokens: 2000
+            maxOpsPerTurn: 2
+            mapTokens: 1500
+          policy:
+            protectUserMessages: true
+            archiveOnDrop: block   # 'block' (default) | 'proceed'
+            recallMaxTokens: 1200
         models:
           - provider: opencode-go
             model: deepseek-v4.1-flash
@@ -138,6 +158,17 @@ when the field is absent; `0` in a limit field means **unset**, not zero.
 | | `maxTokens` | `8192` | Provider generation cap for the summary. |
 | `retries` | `compactionRetries` | `1` | Extra compaction attempts while pressure remains above the threshold. |
 | | `maxOverflowRetries` | `1` | Overflow-recovery retries (delegated to the base engine). |
+| `memory` | `enabled` | `true` | Master switch for the memory tool, the nudge and the step-boundary drop. `false`: `inspect`/`plan` still report, `apply` refuses. |
+| | `budget.ratio` | `0.3` | The **decide band**: `surfaceTokens` (the measured request size of the current surface) over `budget.tokens`, else this fraction of the context window. At or above it, the step-boundary nudge fires. |
+| | `budget.tokens` | unset | Absolute decide budget. **Wins over `ratio`** when both are set. |
+| | `budget.denominator` | `'surface'` | What the band measures: the surface only, or `'total'` (the whole routed request, including the system prompt and tools). |
+| | `budget.warnAt` | `0.9` | Fraction of the budget at which the engine may append one soft nudge per episode (never more than one). Clamped to `1`. |
+| | `limits.minFreedTokens` | `2000` | A planned drop that frees less than this (net of the tombstone it adds) is refused, so memory never churns for nothing. |
+| | `limits.maxOpsPerTurn` | `2` | How many drops one turn may commit. Clamped to 1-8. |
+| | `limits.mapTokens` | `1500` | Rough budget for the `inspect` step map text. Clamped to 200-8000. |
+| | `policy.protectUserMessages` | `true` | Every user message inside a dropped span is re-emitted verbatim in the tombstone (per-message cap ~6000 chars, then a truncation marker). `false` drops that guarantee. |
+| | `policy.archiveOnDrop` | `'block'` | `block`: a drop whose archive write fails is refused and the history stays. `proceed`: warn and drop anyway. |
+| | `policy.recallMaxTokens` | `1200` | Text budget for one `recall` result. Clamped to 200-8000. |
 | `models[]` | `provider`, `model` | required | Exact route to match. A preset missing either field is dropped with a warning. |
 | | `trigger`, `retain`, `summarization`, `retries` | inherit | Field-wise override of the global groups. A preset `trigger` **replaces** the global trigger wholesale (`mode` still inherits). |
 | | `disabled` | `false` | `true`: never auto-fire for this model. Manual and overflow compaction are unaffected. |
@@ -199,6 +230,64 @@ values while the trigger math follows the edit, and logs one warning.
 - **Pointer.** `summarize()` prepends a paragraph naming both files at the
   project-relative path (absolute when the archive root leaves the project).
 
+## Session memory
+
+Automatic compaction fires when the *request* gets large. Session memory is the
+complementary manual path: it lets the model decide that some **finished** work no longer
+needs to sit on the visible surface, and pay for that space back with one tombstone —
+after the raw text has been archived to disk. It is a tool, not a trigger: nothing drops
+unless the model (or the user, through the model) asks for it.
+
+The tool is `session_memory` with five actions:
+
+| Action | Arguments | What it does |
+|---|---|---|
+| `inspect` | — | Prints the **step map**: one row per step on the surface (`turn.step`, seq range, shape, ~tokens, preview, `[pinned]`/`[retained]`), the resolved budget picture, and the current band. Read-only. |
+| `plan` | `steps` | Resolves a selection, checks every guard, and returns what *would* happen. With `apply: true` it also archives the span and **queues** the drop. |
+| `apply` | `steps` | Same as `plan` with `apply: true`; refuses when the queued-drop limit for this turn is reached. |
+| `pin` / `unpin` | `seqs` | Marks surface seqs (or ranges, e.g. `12-18`) as undroppable. Pins are also what protects a fact the model will need later. |
+| `recall` | `query` | Searches the archives of this session and returns the matching verbatim text (bounded by `recallMaxTokens`). |
+
+```
+inspect  → step map + budget
+plan 3.1-3.4        → dry run: tokens, tombstone cost, net freed
+apply 1-3           → archive, then queue a step-boundary drop
+```
+
+**Naming a step.** The first column of `inspect` is the only accepted spelling:
+`"3.1"` is turn 3, step 1; `"3"` is every step of turn 3; `"1-3"` is turns 1 to 3;
+`"3.1-3.3"` is steps 1 to 3 of turn 3. A bare turn expands to whatever steps it holds.
+In the harness a step counter restarts inside each turn (`agent.ts:396`), so a bare step
+number would name a different step in every turn — hence the `turn.step` key
+([incident 16](docs/incidents/2026-10-13-session-memory-step-attribution.md)).
+
+**Why `apply` is deferred.** A tool call runs *inside* a turn, and the harness only lets
+the surface be rewritten at an idle maintenance point. So `apply` does the expensive,
+safe half immediately — it writes the archive and prices the exact tombstone — and queues
+the surface replacement for the next `step/start` event. Nothing is deleted at the moment
+the tool returns; the reply says `queued`, and the drop lands at the next step boundary.
+
+**What a drop guarantees.**
+
+- **Archived first, then dropped.** The span's full verbatim text and a handoff summary go
+  to the session's archive tree before the surface changes. `archiveOnDrop: 'block'`
+  means a failed write refuses the whole drop rather than losing text.
+- **User messages are never lost.** Every `user/message` inside the dropped span is
+  re-emitted verbatim in the tombstone (capped per message, with a truncation marker when
+  the cap bites). A drop that would not free real space is refused by
+  `limits.minFreedTokens`, because the tombstone itself is priced in.
+- **Whole steps only.** A step that is only partly below the retained-tail boundary is
+  refused instead of half-removed, and a tool-call/tool-result pair is always taken
+  together — a drop can never leave an orphaned call or result on the surface.
+- **Pins are absolute.** A selection that touches a pinned seq is refused until it is
+  unpinned.
+- **The latest turn stays.** The kept-verbatim retained tail is not droppable, so the
+  current request and its answer are never in a planned span.
+
+Pins live in memory for the process lifetime (they are not persisted), and the
+`memory` group has no editor in the dock panel yet — edit it in the config document or
+the native settings form (see [Known limitations](#known-limitations)).
+
 ## Web UI
 
 ### Host routes
@@ -254,16 +343,17 @@ cd D:\my_deepseek_harness\dsh-autocompact
 # once (and again after switching checkouts): build the node_modules junction farm
 node scripts\link-node-modules.mjs --target D:\deepseek-harness_2
 
-# tests (10 spec files: config, trigger, archive, summarize, workspace, engine,
-#        status, gui, client, toolchain)
+# tests (12 spec files: config, trigger, archive, summarize, workspace, engine,
+#        status, gui, client, toolchain, memory, runtime)
 node node_modules\vitest\vitest.mjs run
 
 # typecheck
 node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 ```
 
-- Verified on the 0.2.1-alpha.2 target (2026-10-12): **PASS** — 10 files / 120 tests;
-  `tsc -p tsconfig.json --noEmit` exit 0.
+- Verified on the 0.2.1-alpha.2 target (2026-10-13): **PASS** — 12 files / 158 tests;
+  `tsc -p tsconfig.json --noEmit` exit 0. (The memory suites are the newest: 18 + 13
+  tests; `tests/config.spec.ts` grew to 24 for the `memory` group.)
 - Invoke the tools through their **junctioned package entries** as above: this
   `node_modules` is a farm of package directories only, so there is no
   `node_modules\.bin` shim directory to call.
@@ -297,6 +387,10 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 | `src/workspace.ts` | Project directory of a session (`header.cwd` → fallback). |
 | `src/status.ts` | Live progress board (running compaction per session, bounded recent outcomes). |
 | `src/gui.ts` | The two HTTP routes and the config-editor write path. |
+| `src/memory.ts` | Pure surface model: step map, selection grammar, budget bands, drop planning and tombstone rendering. |
+| `src/drop.ts` | Drop side effects: archive-then-replace commit, span re-validation, recall. |
+| `src/runtime.ts` | `MemoryRuntime`: the tool's operations, the queued drop, the step-boundary flush, the pressure nudge. |
+| `src/tool.ts` | The `session_memory` tool definition. |
 | `src/types.ts` | Document shapes and the resolved form. |
 | `client.js` | Web-UI indicator and tuning panel. |
 | `cordis.patch.yml` | The bundle patch (disable `compaction-basic`, insert this package). |
@@ -348,6 +442,14 @@ node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
    planned native-settings migration (limitation 7) deletes the write route and
    removes half of this exposure.
 
+9. **Session memory needs a restart to load, its pins are per process, and it has no
+   dock editor.** It is host code (`src/*.ts`), so it applies on the next harness start.
+   Pins live in `MemoryRuntime` for the process lifetime and are gone after a restart.
+   A drop is permanent on the surface — `recall` returns the archived text but does not
+   re-insert it, so a span the model still needs must be pinned *before* it is dropped.
+   The `memory` group is editable in the config document (and therefore in the native
+   settings form), but the dock panel renders no memory section yet.
+
 ## Incident records
 
 Every real issue found while porting is recorded with its root cause, fix and
@@ -368,6 +470,7 @@ evidence under [`docs/incidents/`](docs/incidents/):
 13. [A test pinned the bundle's externals to a list that was never the rule](docs/incidents/2026-10-12-externals-list-test-premise.md)
 14. [The native settings surface already serves this plugin's Config](docs/incidents/2026-10-12-native-settings-surface-already-serves-us.md)
 15. [The floating tuner was translucent — its surface read muddy](docs/incidents/2026-10-12-panel-surface-translucent.md)
+16. [A step is not a number: step identity, and the non-ascending surface](docs/incidents/2026-10-13-session-memory-step-attribution.md)
 
 Also in `docs/`:
 

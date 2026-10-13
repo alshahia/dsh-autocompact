@@ -36,8 +36,10 @@ import type { ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic/src/types
 import { LiveConfigReader, autocompactConfig, resolvePreset, toBasicConfig } from './config.ts'
 import type { HandoffVolatileConfig } from './config.ts'
 import { installGuiBridge } from './gui.ts'
+import { MemoryRuntime, installMemoryObserver } from './runtime.ts'
 import { StatusBoard } from './status.ts'
 import { summarizeWithArchive } from './summarize.ts'
+import { installMemoryTool } from './tool.ts'
 import { needsWindowFor, resolveHandoffSpec, wouldFire } from './trigger.ts'
 import type { ResolvedHandoffConfig } from './types.ts'
 import { projectDirOf } from './workspace.ts'
@@ -93,6 +95,15 @@ export class AutocompactEngine extends BasicCompactionEngine {
   private readonly fallbackDir: string
   /** Warn-once keys for retain clamps: target@threshold:retain. */
   private readonly clampedRetainWarned = new Set<string>()
+  /**
+   * Model-directed memory: the session_memory tool, the pins it honors, and the
+   * queued drop that lands at the next step boundary.
+   *
+   * The runtime owns no service the engine does not already inject, so the
+   * engine's `inject` list is unchanged: an absent tool registry or web server
+   * only disables the corresponding lever.
+   */
+  readonly memory: MemoryRuntime
 
   constructor(ctx: Context, config: HandoffVolatileConfig = {} as HandoffVolatileConfig) {
     const reader = new LiveConfigReader(message => ctx.logger.warn(message))
@@ -104,8 +115,11 @@ export class AutocompactEngine extends BasicCompactionEngine {
     this.reader = reader
     this.live = live
     this.fallbackDir = process.cwd()
-    // The GUI is optional: a composition without a web server, or without a
-    // config editor for the tuning card, keeps compacting and archiving.
+    this.memory = new MemoryRuntime({ ctx, config: () => this.refresh(), fallbackDir: this.fallbackDir })
+    // Each seam is optional: a composition without a tool registry, without a
+    // web server, or without a config editor keeps compacting and archiving.
+    installMemoryTool(ctx, this.memory)
+    installMemoryObserver(ctx, this.memory)
     installGuiBridge(ctx, this)
   }
 
@@ -231,6 +245,11 @@ export class AutocompactEngine extends BasicCompactionEngine {
     if (target === undefined) return null
     const preset = resolvePreset(config, target)
     if (preset?.disabled === true) return null
+
+    // Offer the model the choice before the engine makes it: this nudge rides
+    // the same per-step seam, but deliberately below the compaction threshold,
+    // so a model-directed drop can free room the engine would otherwise take.
+    await this.memory.advisory(agent, signal, this.ctx.tokenMeter.measure(agent.session))
 
     const meter = this.ctx.tokenMeter
     let measurement: TokenMeasurement = meter.measure(agent.session)

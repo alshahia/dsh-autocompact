@@ -22,7 +22,7 @@ describe('autocompactConfig', () => {
     // which throws when a volatile node sits in a blocked position (nested
     // volatile, array item, dict value). This test is that guard.
     const resolved = resolveDocument({})
-    for (const key of ['enabled', 'trigger', 'retain', 'archive', 'summarization', 'retries', 'models']) {
+    for (const key of ['enabled', 'trigger', 'retain', 'archive', 'summarization', 'retries', 'models', 'memory']) {
       expect(typeof resolved[key]?.get, `${key} is live`).toBe('function')
     }
     expect(resolved.enabled!.get()).toBe(true)
@@ -123,6 +123,70 @@ describe('LiveConfigReader', () => {
       undefined, null, {}, { trigger: { ratio: 'nope' } }, { retain: { tokens: -5 } },
       { models: 'nope' }, { models: [{ provider: 'p', model: 'm', trigger: { ratio: 99 } }] },
       { archive: { root: '' } }, { archive: { onFailure: 'nonsense' } }, { summarization: { maxTokens: 0 } },
+    ]) {
+      expect(() => read(raw), JSON.stringify(raw)).not.toThrow()
+    }
+  })
+})
+
+describe('memory configuration', () => {
+  it('resolves the documented defaults', () => {
+    expect(read({}).memory).toEqual({
+      enabled: true,
+      budget: { ratio: 0.3, denominator: 'surface', warnAt: 0.9 },
+      limits: { minFreedTokens: 2000, maxOpsPerTurn: 2, mapTokens: 1500 },
+      policy: { protectUserMessages: true, archiveOnDrop: 'block', recallMaxTokens: 1200 },
+    })
+  })
+
+  it('is one live reference, so an edit reaches the engine without a reload', () => {
+    const memory = resolveDocument({ memory: { budget: { tokens: 4000 } } }).memory!.get() as Record<string, unknown>
+    expect(memory).toMatchObject({ enabled: true, budget: { tokens: 4000, ratio: 0.3 } })
+  })
+
+  it('clamps every numeric limit into its documented range', () => {
+    const memory = read({
+      memory: {
+        budget: { ratio: 5, warnAt: 5 },
+        limits: { minFreedTokens: -1, maxOpsPerTurn: 99, mapTokens: 10 },
+        policy: { recallMaxTokens: 1 },
+      },
+    }).memory
+    expect(memory.budget.ratio).toBe(1)
+    expect(memory.budget.warnAt).toBe(1)
+    expect(memory.limits.minFreedTokens).toBe(2000)
+    expect(memory.limits.maxOpsPerTurn).toBe(8)
+    expect(memory.limits.mapTokens).toBe(200)
+    expect(memory.policy.recallMaxTokens).toBe(200)
+    expect(read({ memory: { limits: { maxOpsPerTurn: 0, minFreedTokens: 0 } } }).memory.limits)
+      .toMatchObject({ maxOpsPerTurn: 2, minFreedTokens: 0 })
+  })
+
+  it('accepts only the documented exact values for the denominator and the drop policy', () => {
+    expect(read({ memory: { budget: { denominator: 'total' } } }).memory.budget.denominator).toBe('total')
+    expect(read({ memory: { budget: { denominator: 'nonsense' } } }).memory.budget.denominator).toBe('surface')
+    expect(read({ memory: { policy: { archiveOnDrop: 'proceed' } } }).memory.policy.archiveOnDrop).toBe('proceed')
+    expect(read({ memory: { policy: { archiveOnDrop: 'nonsense' } } }).memory.policy.archiveOnDrop).toBe('block')
+    expect(read({ memory: { policy: { protectUserMessages: false } } }).memory.policy.protectUserMessages).toBe(false)
+    expect(read({ memory: { enabled: false } }).memory.enabled).toBe(false)
+    expect(read({ memory: { budget: { tokens: -3 } } }).memory.budget.tokens).toBeUndefined()
+  })
+
+  it('notices a clamped warnAt once per resolved generation', () => {
+    const warnings: string[] = []
+    const reader = new LiveConfigReader(m => warnings.push(m))
+    const raw = { memory: { budget: { warnAt: 2 } } } as HandoffVolatileConfig
+    reader.read(raw)
+    reader.read(raw)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('memory.budget.warnAt')
+  })
+
+  it('never throws on a hostile memory document', () => {
+    for (const raw of [
+      { memory: 'nope' }, { memory: { budget: 'nope' } }, { memory: { limits: null } },
+      { memory: { limits: [] } }, { memory: { policy: { policy: 1 } } },
+      { memory: { budget: { ratio: 'x', tokens: 'y' } } }, { memory: { enabled: 'yes' } },
     ]) {
       expect(() => read(raw), JSON.stringify(raw)).not.toThrow()
     }

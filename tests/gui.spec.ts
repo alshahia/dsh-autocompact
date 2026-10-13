@@ -25,6 +25,12 @@ function resolved(overrides: Partial<ResolvedHandoffConfig> = {}): ResolvedHando
     retries: { compactionRetries: 1, maxOverflowRetries: 1 },
     enabled: true,
     models: [],
+    memory: {
+      enabled: true,
+      budget: { ratio: 0.3, denominator: 'surface', warnAt: 0.9 },
+      limits: { minFreedTokens: 2000, maxOpsPerTurn: 2, mapTokens: 1500 },
+      policy: { protectUserMessages: true, archiveOnDrop: 'block', recallMaxTokens: 1200 },
+    },
     ...overrides,
   }
 }
