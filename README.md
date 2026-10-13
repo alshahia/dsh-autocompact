@@ -5,7 +5,8 @@ model-written handoff archives kept **inside the project that owns the session**
 and a Web-UI indicator that shows a compaction while it is running.
 
 This is the standalone successor to the `compaction-handoff` + `web-compact-config`
-pair in the `deepseek_plugins` workspace: the same trigger/archive semantics, ported
+pair in the legacy plugin suite (frozen at `_archive/deepseek_plugins/` in the
+workspace): the same trigger/archive semantics, ported
 to the 0.2.x plugin system (a bundle with a patch, a native volatile `Config`, a
 `dsh.client` client bundle, and host-served GUI routes instead of a dead settings
 bridge and a hand-edited JSON store).

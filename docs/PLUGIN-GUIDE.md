@@ -2,7 +2,8 @@
 
 **Target:** DeepSeek Harness `0.2.1-alpha.2`, `web` profile, Windows, source-loaded
 plugins. Distilled from the 14 incident records in this repo plus the workspace
-guides (`deepseek_plugins/docs/best-practices/`). Read this to get a plugin
+guides (now `dsh-plugin-playbook/guides/`; the originals are archived at
+`_archive/deepseek_plugins/docs/best-practices/`). Read this to get a plugin
 running with the fewest round trips; read the incident records when something
 looks impossible.
 

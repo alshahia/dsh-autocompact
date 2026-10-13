@@ -7,8 +7,8 @@ source, and that fix needs one harness restart to load.
 ## What was done
 
 Install of `dsh-autocompact` into the running harness' `web` profile
-(`%USERPROFILE%\.dsh\profiles\web`), replacing the legacy `deepseek_plugins`
-suite in one edit.
+(`%USERPROFILE%\.dsh\profiles\web`), replacing the legacy plugin suite in
+one edit. That suite was archived at `_archive/deepseek_plugins/` on 2026-10-13.
 
 | Step | Artifact |
 |---|---|
