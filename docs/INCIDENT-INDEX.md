@@ -1,7 +1,7 @@
 # Incident index
 
 Answering "did we already hit this?" for the auto-compact handoff engine from one page.
-Built from `docs/incidents/*.md` (16 records: 15 dated 2026-10-12, one dated 2026-10-13), `README.md`
+Built from `docs/incidents/*.md` (17 records: 15 dated 2026-10-12, two dated 2026-10-13), `README.md`
 and `docs/RETRO.md`. Everything below is transcribed from those files; `not recorded`
 means the record does not state that field. Dates and filenames are as they appear in
 the records.
@@ -9,8 +9,9 @@ the records.
 **How to read the numbers.** Test and file counts quoted below are **as of the record
 that states them**, not a current baseline: 7 files / 72 tests at record 1, 10 files /
 110 at records 8-9, 114 at record 10, 120 at records 12-13, 10 files / **121 tests**
-green at record 15, and **12 spec files / 158 tests** green at record 16 — the current
-baseline (09:05 local, 2026-10-13).
+green at record 15, **12 spec files / 158 tests** green at record 16 (09:05 local,
+2026-10-13), and **12 spec files / 168 tests** green at record 17 (11:00 local,
+2026-10-13) — the current baseline.
 Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 `Config` object literal.
 
@@ -23,14 +24,19 @@ Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
   ["Restart, reload, and hot application"](../README.md) (restates the table in record 11),
   ["Web UI"](../README.md), ["Archives"](../README.md), ["Development"](../README.md),
   ["Trigger math"](../README.md) (record 5) and ["Retention clamping"](../README.md).
-- `incidents/` — the 16 records tabled below. Other `docs/` files: `RETRO.md` (process
+- `incidents/` — the 17 records tabled below. Other `docs/` files: `RETRO.md` (process
   reflection whose "Open risks handed over" table restates several items in
   "Open or deferred") and `PLUGIN-GUIDE.md` (the trap list distilled from these records).
 - Record-to-record links: 9 → 6 (client inject), 10 → 11 (restart semantics),
   12 → 10 (findRow fix), 12 → 11 (unauthenticated routes), 13 → 12 (same change),
   14 → 10 (findRow was this plugin's own bug), 15 → 12 (same panel, same client half)
   and 15 → 11 (a `client.js` edit lands on the next page load); 16 is the record of the
-  feature whose own tests wrote it (memory step identity and surface ordering).
+  feature whose own tests wrote it (memory step identity and surface ordering);
+  17 → 4 (it is the route record 4 introduced that stopped registering) and 17 → 11
+  (record 11's `200` was a warm re-apply measurement, not a cold boot).
+- Sibling evidence: the same defect class, with a measured mount probe, is recorded in
+  `dsh-vision-bridge/docs/incidents/2026-10-13-optional-service-read-404-panel.md`
+  (its caveat 4 names this plugin's own `/status` 404).
 
 ## Incident table
 
@@ -52,6 +58,7 @@ Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 | [2026-10-12-native-settings-surface-already-serves-us.md](incidents/2026-10-12-native-settings-surface-already-serves-us.md) | 2026-10-12 | README limitation 7 described the tuning migration as work on our side plus an unverified mechanism, when the native settings surface already renders this plugin's volatile Config | The documentation claim rested on an unchecked premise (the settings-service source was never read) | Knowledge recorded: `describe()` → `volatileForm()` already projects every active volatile Config and the native write path is the same `configEditor.edit` this plugin uses, so the migration is mostly deletion | knowledge recorded (migration deliberately not started) |
 | [2026-10-12-panel-surface-translucent.md](incidents/2026-10-12-panel-surface-translucent.md) | 2026-10-12 | The floating tuner was "not very clear": transcript and composer text showed through the panel, so its labels read muddy | The panel's only fill was `--dsw-specific-menu`, the shared MENU material at 45-58% alpha outside macOS, and unlike the shipped dialogs it has no `MenuSurface` opaque backing and had no `backdrop-filter` | Layer the translucent family fill over the opaque `--dsw-alias-bg-layer-1` (theme-tinted, fully opaque) and add `backdrop-filter: var(--dsw-menu-backdrop-filter)`; one regression assertion in `tests/client.spec.ts` | fixed (client half; visual check is a browser checkpoint) |
 | 16 | [2026-10-13-session-memory-step-attribution.md](incidents/2026-10-13-session-memory-step-attribution.md) | 2026-10-13 | After the session-memory planner was written, it merged steps across turns, and once one drop landed it attributed *no* surface node to any step | A harness `step` counter restarts inside each turn (`agent.ts:317`, reset at `:396`), and a `replace` puts the new tombstone event (highest seq) at the position of the span it replaced, so the surface stops being seq-ascending | Key steps as `turn.step` with a turn/step range grammar and a whole-step rule; attribute each node by `turn/start` containment through a binary search, and give the opening user message to the step it caused | FIXED (unit-verified: 12 files / 158 tests green; no live session yet) |
+| 17 | [2026-10-13-optional-service-read-at-apply-404-routes.md](incidents/2026-10-13-optional-service-read-at-apply-404-routes.md) | 2026-10-13 | The GUI showed no compaction animation and the tuner opened with a bare `Read-only: `; `GET /dsh-autocompact/status` answered **404** while `/` and a shipped plugin route answered `401` | `webServer` is provided by the separate web-runtime boot entry, so a one-shot `ctx.get('webServer')` at apply time read "absent" on a cold start and the bridge gave up with no retry | Consume the optional service with `ctx.inject(['webServer'], …)` and register on the injected child scope; read absence through `ctx.get` instead of the swallowed property throw; tests run against the real cordis registry | FIXED (unit-verified against the real registry, FAIL-before/PASS-after proven; the live route needs one harness start — user checkpoint) |
 
 ## What each record is authoritative for
 
@@ -69,8 +76,9 @@ Line numbers are as of the same moment; `src/config.ts:152-160` is the whole
 12. **panel-floats-above-composer** — When a slot owner lays your entry out in flow, everything rendered inside that entry is page layout; a panel belongs to the viewport and must watch the *anchor's ancestors'* size changes, not just the window's.
 13. **externals-list-test-premise** — Never pin a platform capability inside a test comment; assert against the frozen table (`PLATFORM_MODULES`) or the guide, because "illegal import" and "allowed but never declared" look identical from inside a bundle.
 14. **native-settings-surface-already-serves-us** — Before hand-writing a configuration UI, ask whether the harness already renders your Config: a schemastery `Config` whose groups are volatile gets a native, validated, revision-safe form for free, and a doc claim about platform behavior needs a file/line source or an "unverified" marker in the same sentence.
-16. **session-memory-step-attribution** — In DSH a step is `turn.step` (the counter restarts inside each turn), and a session surface touched by a `replace` is **not seq-ascending** (the replacement event carries a new, higher seq and sits at the old span's position) — so (a) never key an identifier, log line, or filter on a bare step number, (b) never walk a session log's surface with a monotonic cursor, and (c) attribute by containment rather than proximity, because the user message that *causes* a step is appended before the step's own start marker.
 15. **panel-surface-translucent** — `--dsw-specific-menu` is a menu *material*, not a panel background: it is 45% (dark) / 58% (light) alpha with a macOS-only 94% override, so a surface that uses it without a `MenuSurface` wrapper is translucent and unreadable on Windows. Outside `MenuSurface`, paint an opaque theme layer (`--dsw-alias-bg-layer-*`) under the fill; read alpha-bearing tokens in the theme source before shipping a surface.
+16. **session-memory-step-attribution** — In DSH a step is `turn.step` (the counter restarts inside each turn), and a session surface touched by a `replace` is **not seq-ascending** (the replacement event carries a new, higher seq and sits at the old span's position) — so (a) never key an identifier, log line, or filter on a bare step number, (b) never walk a session log's surface with a monotonic cursor, and (c) attribute by containment rather than proximity, because the user message that *causes* a step is appended before the step's own start marker.
+17. **optional-service-read-at-apply** — A service provided by another boot entry (`webServer`, from the `web-runtime`/`webserver` startup entries) must be consumed with `ctx.inject([name], …)`, never a one-shot read at apply time: a cold boot applies the plugin before the provider is reachable, so the eager read reports "absent" and any registration it guards silently never happens. The engine keeps working, which is why nothing looks broken. Verify a route with a control (`401` = exists but gated, `404` on `/dsh-*` = never registered), read absence through `ctx.get` rather than the swallowed property throw, and treat a `200` measured right after a patch reload as a **warm-apply** measurement that a cold boot may not reproduce.
 
 ## Verification matrix
 
@@ -94,6 +102,7 @@ Cells say only what the records state; `not recorded` means the record names no 
 | 14 native-settings | suite green after the doc-only change, no numbers stated (no code touched) | not recorded | not recorded | not recorded | not recorded |
 | 15 panel-surface | `node --check client.js` exit 0; `vitest` 10 files / **121 tests** exit 0 (14:55:26 local); 1 new assertion rejecting the old single-token declaration | `tsc -p tsconfig.json --noEmit` exit 0 (14:55 local) | not recorded (client-only change) | browser result **not machine-verified** (node environment, no react/jsdom, no style computation) | refresh the GUI: the panel surface must be opaque, with no transcript text visible through it |
 | 16 session-memory | `vitest` 12 files / **158 tests** exit 0 (09:05:40 local): `tests/memory.spec.ts` 18 (new), `tests/runtime.spec.ts` 13 (new), `tests/config.spec.ts` 18 → 24; a temporary probe spec isolated the ordering bug and was deleted | `tsc -p tsconfig.json --noEmit` exit 0 (09:05 local) | not recorded (no route touched) | not recorded | not recorded — the feature has not been loaded by a live harness (host source edit applies on the next harness start) |
+| 17 optional-service-read | `vitest` 12 files / **168 tests** exit 0 (11:00 local): 6 new tests in `tests/gui.spec.ts`, two of them driving the **real** cordis registry (provider fiber provides `webServer` after apply; withdraw + re-provide); FAIL-before/PASS-after proven — the same spec reads **6 failed / 21 passed** with the pre-fix file restored, **27 passed** with the fix; `client.js` gained 4 source-shape assertions and one locale-parity/no-empty-help scan in `tests/client.spec.ts` (20 → 24) | `tsc -p tsconfig.json --noEmit` exit 0 (11:00 local) | live probe of the running process before the fix: `/dsh-autocompact/status` **404**, `/` **401**, shipped `/dsh-open-in-app/apps` **401**, control `/dsh-autocompact/nope` **404**; the live `200` is **not re-measured** (needs one harness start) | not recorded (no brush with the rendered UI) | refresh the GUI after the next harness start: `GET /dsh-autocompact/status` must answer `200`, the pill's dot must be green rather than amber, and the panel must show the help lines and the context/threshold numbers |
 
 Evidence the records state outside those five channels: target-checkout source reading
 (records 1, 4, 6, 7, 9, 12, 13, 14, 15), the boot-free `--dump-config` composition check and
@@ -110,7 +119,8 @@ Only the effect statements the records make.
 | Patch row added/removed, junction added/removed (composition) | live — `patchReload: live`; verified by mounting and unmounting a probe package without restarting; a profile edit applies to the running harness immediately | 11, 9 |
 | Config values (any volatile group) | live — re-read at the start of each operation | 11 |
 | `client.js` edit | next page load — bundles are read from disk, but a loaded page cannot swap a module face in place | 11, 12, 15 |
-| Host TS source edit (`src/*.ts`, e.g. the `findRow` fix) | next harness start — the module is imported once per process; `/status` kept returning the pre-fix reason string after the fix | 11, 10, 12 |
+| Host TS source edit (`src/*.ts`, e.g. the `findRow` fix) | next harness start — the module is imported once per process; `/status` kept returning the pre-fix reason string after the fix | 11, 10, 12, 17 |
+| A service this plugin does not own (`webServer`) becoming available | whenever the providing fiber comes up — `ctx.inject` unloads and re-runs the callback on every service change, so registration survives a cold boot order that a one-shot `ctx.get` at apply time does not | 17 |
 | `StatusBoard` "recent" list | in-memory — a harness restart loses it; the archives on disk remain the durable record | 4 |
 | Native settings write (`ctx.settings` `update` / `replace` / `mutate`) | lands in the same profile-patch user layer; `applies: 'live'` is stated as honest for this entry | 14 |
 
@@ -128,7 +138,8 @@ a user decision" was marked superseded by record 11.
 ## Open or deferred
 
 - **Plugin routes are not behind the GUI's browser-auth gate** — `/dsh-autocompact/status` answered `200` and `/dsh-autocompact/config` `405` without the session cookie while `/` required it; recorded as a deliberate gap that should be closed (trust check or explicit opt-in) before exposure beyond `127.0.0.1`. Mentioned in [live-profile-install](incidents/2026-10-12-live-profile-install.md) (primary), [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md) and [`RETRO.md`](RETRO.md) (re-verified `200`, no cookie; listed as an open risk).
-- **Web-UI Save is dead in the running process until one harness restart** — `/status` still reported `capabilities.write: false` with the pre-fix reason at 13:40 local, and [`RETRO.md`](RETRO.md) re-verified `write=false` with the same reason at ~13:55. Mentioned in [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md), [config-editor-entries-are-loader-nodes](incidents/2026-10-12-config-editor-entries-are-loader-nodes.md) and [`RETRO.md`](RETRO.md).
+- **Web-UI Save was dead in the running process until one harness restart** — `/status` still reported `capabilities.write: false` with the pre-fix reason at 13:40 local on 2026-10-12, and [`RETRO.md`](RETRO.md) re-verified `write=false` with the same reason at ~13:55. Mentioned in [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md), [config-editor-entries-are-loader-nodes](incidents/2026-10-12-config-editor-entries-are-loader-nodes.md) and [`RETRO.md`](RETRO.md). **Superseded 2026-10-13 by a larger finding:** `/status` did not answer at all in the 07:51 process (`404` — the routes were never registered), so "Save is disabled" was a symptom, not the open item; the item is now record 17, and the harness restart it needs also carries the `write: true` fix from record 10.
+- **The plugin's live routes are not re-verified after the record-17 fix** — the fix is host code, so `/dsh-autocompact/status` cannot be re-measured without starting the harness that hosts the session. Acceptance is one harness start, then `200` on the status route, a green (not amber) pill dot and the panel's help text visible. Recorded in [2026-10-13-optional-service-read-at-apply-404-routes](incidents/2026-10-13-optional-service-read-at-apply-404-routes.md). A disable→enable of the plugin row is *not* a valid substitute: a re-apply re-runs the **cached** module, so it can restore the routes through warm timing while proving nothing about the new code.
 - **Client-half visual result not yet verified** — the record states it needs one page refresh in the user's browser; the pixel placement is not machine-verified, so acceptance is the user observing that the composer bar, message box and transcript do not move. Mentioned in [live-profile-install](incidents/2026-10-12-live-profile-install.md), [panel-floats-above-composer](incidents/2026-10-12-panel-floats-above-composer.md) and [`RETRO.md`](RETRO.md).
 - **Session memory is unit-verified only and not yet loaded in a live session** — the feature is host code (`src/memory.ts`, `src/drop.ts`, `src/runtime.ts`, `src/tool.ts`), so it reaches the running harness only on the next harness start, and a real tool-loop turn has not exercised `plan` → `apply` → boundary flush end to end. Open by construction: pins live for the process lifetime only, and the `memory` config group has no dock-panel editor (config document / native settings form only). Recorded in [2026-10-13-session-memory-step-attribution](incidents/2026-10-13-session-memory-step-attribution.md) and `../README.md`, "Known limitations" item 9.
 - **Native settings migration — recorded, not started** — drop the popover inputs, `mergeConfig`, `POST /dsh-autocompact/config` and the form's strings, keep the dock pill as status plus a link; unverified are the generic-form rendering quality of the nested groups and the `models` array and the label/i18n source. Recorded in [native-settings-surface-already-serves-us](incidents/2026-10-12-native-settings-surface-already-serves-us.md) and `../README.md`, "Known limitations" item 7 (2026-10-12).

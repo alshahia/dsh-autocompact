@@ -96,10 +96,29 @@ export interface GuiEngine {
   describeSession(agent: Agent, signal: AbortSignal): Promise<Record<string, unknown>>
 }
 
-/** Read one Cordis service without throwing when it is absent. */
+/**
+ * Read one Cordis service without throwing when it is absent or not injected.
+ *
+ * `ctx.get(name)` is the sanctioned optional lookup; a bare property read of a
+ * service that is missing from the plugin's `inject` list THROWS
+ * `cannot get property "<name>" without inject` on this host, so the property
+ * form stays a fallback for ambient handles (`logger`) and for structural
+ * contexts that carry no `get` at all. The fallback is wrapped, never used as
+ * evidence that a service is absent (see dsh-vision-bridge I-4: swallowing that
+ * throw reported "no web server" for a server that was running).
+ */
 function safeGet<T>(ctx: Context, name: string): T | undefined {
   try {
-    return (ctx.get as (key: string) => unknown)(name) as T | undefined
+    const get = (ctx as unknown as { get?: (key: string) => unknown }).get
+    if (typeof get === 'function') {
+      const value = get.call(ctx, name)
+      if (value !== undefined) return value as T
+    }
+  } catch {
+    // Fall through: the property form below may still resolve a structural stub.
+  }
+  try {
+    return (ctx as unknown as Record<string, unknown>)[name] as T | undefined
   } catch {
     return undefined
   }
@@ -371,39 +390,81 @@ function safeAgents(agents: AgentsLike | undefined): Agent[] {
 /**
  * Register the GUI routes on this composition's web server.
  *
- * Returns false (having logged why) when the composition has no web server: the
- * plugin keeps compacting and archiving, only the indicator is unavailable.
+ * `webServer` is an OPTIONAL dependency (a headless composition is a legitimate
+ * place to mount this plugin, so it is deliberately not in `inject`), and it is
+ * provided by the web-runtime boot fiber — which is NOT reachable yet when this
+ * engine is applied during a cold start. A one-shot `ctx.get('webServer')` at
+ * apply time therefore reports "absent", this function returns false, and the
+ * two routes are never registered for the whole process life: the client half
+ * polls `/dsh-autocompact/status`, gets `404`, and the dock indicator silently
+ * shows nothing while compaction runs. Every surface looks healthy (the plugin
+ * entry is active, the client occupant is registered) except the routes.
+ *
+ * Measured live 2026-10-13: `GET /dsh-autocompact/status` → 404 while
+ * `GET /dsh-open-in-app/apps` → 401 (that route exists) and `/` → 401, i.e. the
+ * web server matched no such route. The same defect class was diagnosed with a
+ * mount probe in the sibling plugin — see `dsh-vision-bridge` I-4,
+ * `docs/incidents/2026-10-13-optional-service-read-404-panel.md`.
+ *
+ * The fix is the sanctioned optional-service form: `ctx.inject(['webServer'], …)`
+ * activates a child fiber once the service is actually reachable, and the child
+ * scope registers on it. When no web server ever appears the callback never runs
+ * and the indicator stays off silently — the intended headless behavior. The
+ * direct form remains for structural contexts without `inject` (unit tests, a
+ * hand-built host).
+ *
+ * @returns whether the routes were registered now, or their registration was
+ *   arranged for whenever a web server appears.
  */
 export function installGuiBridge(ctx: Context, engine: GuiEngine): boolean {
-  const server = safeGet<WebServerLike>(ctx, 'webServer')
-  if (server === undefined || typeof server.register !== 'function') {
-    ctx.logger.info('dsh-autocompact: no web server in this composition; the GUI indicator is off')
-    return false
-  }
-  try {
-    ctx.effect(() => {
-      const disposers: Array<() => void> = []
-      for (const route of createGuiRoutes(engine, ctx)) {
-        try {
-          disposers.push(server.register(route))
-        } catch (error: unknown) {
-          ctx.logger.warn('dsh-autocompact: could not register ' + route.path + ' ('
-            + messageOf(error) + '); the GUI indicator is partly unavailable')
-        }
-      }
-      return () => {
-        for (const dispose of disposers) {
+  const install = (scope: Context): boolean => {
+    const server = safeGet<WebServerLike>(scope, 'webServer')
+    if (server === undefined || typeof server.register !== 'function') {
+      ctx.logger.info('dsh-autocompact: no web server in this composition; the GUI indicator is off')
+      return false
+    }
+    try {
+      scope.effect(() => {
+        const disposers: Array<() => void> = []
+        for (const route of createGuiRoutes(engine, ctx)) {
           try {
-            dispose()
-          } catch {
-            // Disposal of an already-removed route is not an error here.
+            disposers.push(server.register(route))
+          } catch (error: unknown) {
+            ctx.logger.warn('dsh-autocompact: could not register ' + route.path + ' ('
+              + messageOf(error) + '); the GUI indicator is partly unavailable')
           }
         }
-      }
-    })
-    return true
-  } catch (error: unknown) {
-    ctx.logger.warn('dsh-autocompact: could not install the GUI bridge (' + messageOf(error) + ')')
-    return false
+        return () => {
+          for (const dispose of disposers) {
+            try {
+              dispose()
+            } catch {
+              // Disposal of an already-removed route is not an error here.
+            }
+          }
+        }
+      })
+      return true
+    } catch (error: unknown) {
+      ctx.logger.warn('dsh-autocompact: could not install the GUI bridge (' + messageOf(error) + ')')
+      return false
+    }
   }
+  // Structural cast: this module deliberately avoids importing the webServer
+  // Context merge (its views of every service are structural), so the typed
+  // overload of `inject` is not in scope here.
+  const inject = (ctx as unknown as {
+    inject?: (deps: string[], callback: (scope: Context) => void) => unknown
+  }).inject
+  if (typeof inject === 'function') {
+    try {
+      inject.call(ctx, ['webServer'], (scope: Context) => { install(scope) })
+      return true
+    } catch (error: unknown) {
+      ctx.logger.warn('dsh-autocompact: could not arrange the GUI indicator ('
+        + messageOf(error) + '); the compaction engine is unaffected')
+      return false
+    }
+  }
+  return install(ctx)
 }

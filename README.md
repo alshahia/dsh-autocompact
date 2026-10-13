@@ -133,6 +133,7 @@ Install and configuration are live; **code** is not. Verified on 0.2.1-alpha.2
 | Any config value (every group is volatile) | **live** — re-read at the start of each operation |
 | `client.js` edit | next **page load** — bundles are served from disk, but a loaded page cannot swap a module face in place |
 | Host source edit (`src/*.ts`) | next **harness start** — the module is imported once per process |
+| The web server becoming available (it belongs to the `web-runtime` boot entry) | whenever that provider comes up — the bridge uses `ctx.inject(['webServer'], …)`, so route registration does not depend on being reachable at apply time ([incident 17](docs/incidents/2026-10-13-optional-service-read-at-apply-404-routes.md)) |
 
 So a source change costs one restart, a client change costs one browser refresh, and
 neither is needed to *use* an already-installed bundle. The measurements behind this
@@ -304,6 +305,17 @@ composition has none — compaction and archiving keep working).
 The prefix is deliberately **not** `/plugins`: that prefix is owned by the
 client-modules bundle route.
 
+Registration is **deferred**, not attempted at apply time: `webServer` is
+provided by the separate web-runtime boot entry, which is not reachable yet when
+this plugin is applied during a cold start, so `installGuiBridge` arranges
+registration with `ctx.inject(['webServer'], …)` and registers on the injected
+child scope. A one-shot optional read at apply time silently left both routes
+unregistered for the whole process lifetime — the plugin kept compacting while
+the GUI showed nothing, and the client's status poll answered `404` — see
+[incident 17](docs/incidents/2026-10-13-optional-service-read-at-apply-404-routes.md).
+A `404` on `/dsh-autocompact/*` means "never registered"; an existing plugin
+route answers `401` (auth), which is how to tell the two apart.
+
 ### Client indicator
 
 `client.js` is a hand-written CommonJS bundle loaded through the shell's module
@@ -326,6 +338,17 @@ loader (`window.__ModuleLoader__`) that registers **one** composer-dock visual:
   [incident 15](docs/incidents/2026-10-12-panel-surface-translucent.md);
 - **adaptive polling** of `GET /dsh-autocompact/status`: ~900 ms while a compaction is
   running, ~3 s while idle;
+- **explains itself.** The floating panel is not a bare form: it opens with what
+  compaction is and when an edit takes effect (next step, no restart), gives every
+  control its own plain-language help line (enabled, trigger ratio, trigger tokens,
+  retain tokens, archive root, summary provider, summary model, and the status
+  numbers), and closes with what Save writes and the live-settings-versus-code
+  distinction. Each help line is wired to its input with `aria-describedby`, and
+  both locales are kept in step. When the host route cannot be read at all, the
+  state is legible instead of empty: the poll records the failure, the pill's dot
+  turns amber for "unknown" (distinct from grey "switched off"), and the panel
+  shows a banner naming the cause — including that a host-code change reaches the
+  running harness only at its next start — rather than ending at `Read-only: `;
 - fail-safe: if anything is missing or throws, it renders nothing and the chat is
   never disturbed. It registers exactly one `conversation.composer.dock` visual and
   takes `react` and `react-dom` (for the portal) from the shell's platform module
@@ -352,9 +375,11 @@ node node_modules\vitest\vitest.mjs run
 node node_modules\typescript\bin\tsc -p tsconfig.json --noEmit
 ```
 
-- Verified on the 0.2.1-alpha.2 target (2026-10-13): **PASS** — 12 files / 158 tests;
-  `tsc -p tsconfig.json --noEmit` exit 0. (The memory suites are the newest: 18 + 13
-  tests; `tests/config.spec.ts` grew to 24 for the `memory` group.)
+- Verified on the 0.2.1-alpha.2 target (2026-10-13): **PASS** — 12 files / 168 tests;
+  `tsc -p tsconfig.json --noEmit` exit 0. (The memory suites are the newest feature
+  work: 18 + 13 tests; `tests/config.spec.ts` grew to 24 for the `memory` group;
+  `tests/gui.spec.ts` is 27, including two tests that drive the **real** cordis
+  registry to prove deferred `webServer` registration — incident 17.)
 - Invoke the tools through their **junctioned package entries** as above: this
   `node_modules` is a farm of package directories only, so there is no
   `node_modules\.bin` shim directory to call.
@@ -472,6 +497,7 @@ evidence under [`docs/incidents/`](docs/incidents/):
 14. [The native settings surface already serves this plugin's Config](docs/incidents/2026-10-12-native-settings-surface-already-serves-us.md)
 15. [The floating tuner was translucent — its surface read muddy](docs/incidents/2026-10-12-panel-surface-translucent.md)
 16. [A step is not a number: step identity, and the non-ascending surface](docs/incidents/2026-10-13-session-memory-step-attribution.md)
+17. [The web server was read once, at apply time: both routes were never registered](docs/incidents/2026-10-13-optional-service-read-at-apply-404-routes.md)
 
 Also in `docs/`:
 

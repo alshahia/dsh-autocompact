@@ -40,13 +40,27 @@
       failed: 'Compaction failed',
       open: 'Auto-compact',
       title: 'Auto-compact',
+      intro: 'When a session grows past its limit, the harness replaces older turns with a model-written summary — that is compaction. This plugin decides WHEN that happens and keeps a copy of everything it condensed. Edits apply to the next step; no restart.',
       enabled: 'Enabled',
-      triggerRatio: 'Trigger at window fraction (0.1–0.95, blank = unset)',
-      triggerTokens: 'Trigger at absolute tokens (0 = unset)',
+      triggerRatio: 'Trigger at window fraction',
+      triggerTokens: 'Trigger at absolute tokens',
       retainTokens: 'Keep this many tokens verbatim',
       archiveRoot: 'Archive root (inside the project)',
       provider: 'Summary provider',
       model: 'Summary model',
+      helpEnabled: 'Off = no automatic compaction and no archives. A manual /compact and overflow recovery still work.',
+      helpRatio: 'Fire when the measured request reaches this fraction of the routed model\'s context window (0.1–0.95). Needs a model that publishes a window. Blank keeps the current value; 0 removes the ratio.',
+      helpTokens: 'Fire at this many tokens, whatever the window is. 0 or blank removes the absolute limit. With both set, the earlier one fires first.',
+      helpRetain: 'How much of the newest conversation stays verbatim above the summary. Larger = more recent detail kept; smaller = more room freed. Keep it below the trigger, or it is clamped.',
+      helpArchiveRoot: 'Folder for the summary and the full condensed text (handoff.md, conversation.md), one per session, resolved inside the project directory — not the harness folder.',
+      helpProvider: 'Provider that writes the summary. Fill provider AND model, or leave both blank to reuse the session\'s own model. A half-filled pair is dropped with a warning.',
+      helpModel: 'Model that writes the summary. Fill provider AND model, or leave both blank to reuse the session\'s own model.',
+      helpStatus: 'First number: size of the routed request as this plugin measures it. Second: the threshold it will fire at. Both are estimates from the session\'s token meter.',
+      helpSave: 'Save writes the values into your profile patch through the harness config editor and validates them against the plugin schema. Changes to these settings are live; changes to plugin CODE need a harness restart.',
+      helpEmpty: 'No session is attached to this page yet, so there is nothing to measure. The context and threshold numbers appear once a session is active.',
+      helpNoEditor: 'This composition exposes no config editor for the plugin, so nothing can be saved from here. Add the values to the dsh-autocompact entry of the profile patch instead — the snippet below is paste-ready.',
+      routeDown: 'Host status route not reachable',
+      helpRouteDown: 'The browser could not read /dsh-autocompact/status, so there is no live state or context number here and saving is unavailable. The plugin runs inside the harness: if its source changed, this only takes effect at the next harness start. A persistent 404 usually means the route was never registered by this process — check that the dsh-autocompact row and its node_modules junction are present in the profile.',
       save: 'Save',
       close: 'Close',
       saving: 'Saving…',
@@ -64,13 +78,27 @@
       failed: '压缩失败',
       open: '自动压缩',
       title: '自动压缩',
+      intro: '会话超出上限时，harness 会用模型生成的摘要替换较早的对话轮次——这就是压缩。本插件决定何时触发压缩，并保存被压缩内容的完整副本。修改在下一个步骤生效，无需重启。',
       enabled: '启用',
-      triggerRatio: '按窗口比例触发（0.1–0.95，留空表示未设置）',
-      triggerTokens: '按绝对 token 触发（0 表示未设置）',
+      triggerRatio: '按窗口比例触发',
+      triggerTokens: '按绝对 token 触发',
       retainTokens: '保留的原文 token 数',
       archiveRoot: '归档根目录（项目内）',
       provider: '摘要 provider',
       model: '摘要 model',
+      helpEnabled: '关闭 = 不再自动压缩，也不再归档；手动 /compact 与上下文溢出恢复仍然有效。',
+      helpRatio: '当请求大小达到所用模型上下文窗口的这一比例时触发（0.1–0.95）。需要模型声明上下文窗口。留空保持当前值；0 表示取消比例触发。',
+      helpTokens: '按绝对 token 数触发，与窗口无关。0 或留空表示取消绝对限制。两者都设置时，先到者触发。',
+      helpRetain: '摘要之上保留多少最新对话原文。越大保留越多近期细节，越小释放越多空间。需低于触发阈值，否则会被自动收敛。',
+      helpArchiveRoot: '摘要与完整压缩原文（handoff.md、conversation.md）的存放目录，每个会话一个文件夹，相对于项目目录解析，而不是 harness 目录。',
+      helpProvider: '写摘要所用的 provider。provider 与 model 必须同时填写，或都留空以复用会话自身的模型；只填一个会被丢弃并给出警告。',
+      helpModel: '写摘要所用的 model。provider 与 model 必须同时填写，或都留空以复用会话自身的模型。',
+      helpStatus: '第一个数字：本插件测得的当前请求大小。第二个：触发阈值。两者都是基于会话 token 计量器的估算值。',
+      helpSave: '保存会通过 harness 配置编辑器写入你的 profile patch，并按插件 schema 校验。这些设置是实时生效的；插件代码的改动需要重启 harness。',
+      helpEmpty: '当前页面尚未关联会话，暂无可测量的内容。会话开始后会显示上下文与阈值数字。',
+      helpNoEditor: '该组合没有为插件提供配置编辑器，无法在此保存。请把下面的内容粘贴到 profile patch 的 dsh-autocompact 条目中。',
+      routeDown: '无法访问宿主状态路由',
+      helpRouteDown: '浏览器无法读取 /dsh-autocompact/status，因此这里没有实时状态与上下文数字，也无法保存。插件运行在 harness 内部：源码改动只有在下次启动 harness 后才生效。若持续返回 404，通常表示本次进程从未注册该路由——请检查 profile 中是否存在 dsh-autocompact 行及其 node_modules 联接。',
       save: '保存',
       close: '关闭',
       saving: '正在保存…',
@@ -105,6 +133,7 @@
     '.dshac-quiet:hover .dshac-pill{opacity:1}',
     '.dshac-dot{width:7px;height:7px;border-radius:50%;background:#3fb950;flex:none}',
     '.dshac-dot[data-on="false"]{background:#8b949e}',
+    '.dshac-dot[data-state="unknown"]{background:#d29922}',
     '.dshac-indicator{display:inline-flex;align-items:center;gap:8px;min-width:0}',
     '.dshac-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.dshac-phase{opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22ch}',
@@ -157,6 +186,18 @@
     '.dshac-actions button:hover{background:var(--dsw-alias-interactive-bg-hover,transparent)}',
     '.dshac-note{font-size:11px;opacity:.75}',
     '.dshac-note pre{margin:4px 0 0;white-space:pre-wrap;font-size:10.5px;opacity:.9;max-height:160px;overflow:auto}',
+    // The tuner explains itself (user request 2026-10-13: "do not assume the
+    // user knows everything"). Every field carries one line of plain-language
+    // help; the intro says what compaction is and when a change takes effect,
+    // and the footer separates live settings from code changes. The help text
+    // is visually subordinate (smaller, receded) so it never competes with the
+    // controls, and stays readable because the panel surface is opaque.
+    '.dshac-intro{margin:0;font-size:11px;line-height:1.45;opacity:.8}',
+    '.dshac-help{margin:0;font-size:10.5px;line-height:1.4;opacity:.6}',
+    '.dshac-foot{margin:0;font-size:10px;line-height:1.4;opacity:.5}',
+    '.dshac-banner{display:grid;gap:4px;padding:6px 8px;border-radius:6px;',
+    'border:1px solid color-mix(in srgb,currentColor 25%,transparent);font-size:11px}',
+    '.dshac-banner strong{font-weight:600}',
     '@keyframes dshac-bounce{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}',
     '@keyframes dshac-slide{0%{left:-40%}100%{left:100%}}',
     '@media (prefers-reduced-motion: reduce){.dshac-dots i,.dshac-bar span{animation:none}',
@@ -233,14 +274,27 @@
               return
             }
             request
-              .then(function (response) { return response && response.ok ? response.json() : null })
-              .then(function (payload) {
-                if (alive && payload && typeof payload === 'object') {
-                  setData(payload)
-                  delay.current = payload.running ? BUSY_POLL_MS : IDLE_POLL_MS
-                }
+              .then(function (response) {
+                if (response && response.ok) return response.json().then(function (payload) { return { payload: payload } })
+                // A 404 here is not "no data yet": it means this harness process
+                // never registered the route (see src/gui.ts). Reporting that
+                // distinctly is what turns a silently empty indicator into a
+                // legible state for the user.
+                return { failure: 'HTTP ' + ((response && response.status) || 'error') }
               })
-              .catch(function () { /* offline or route absent: stay silent */ })
+              .then(function (result) {
+                if (!alive) return
+                if (result.payload && typeof result.payload === 'object') {
+                  setData(result.payload)
+                  delay.current = result.payload.running ? BUSY_POLL_MS : IDLE_POLL_MS
+                  return
+                }
+                setData({ plugin: 'dsh-autocompact', __unreachable: true, __why: result.failure })
+                delay.current = IDLE_POLL_MS
+              })
+              .catch(function () {
+                if (alive) setData({ plugin: 'dsh-autocompact', __unreachable: true, __why: 'offline' })
+              })
               .then(function () {
                 if (alive) timer = setTimeout(load, delay.current || IDLE_POLL_MS)
               })
@@ -497,12 +551,29 @@
             })
         }
 
-        var field = function (key, label, type) {
+        // User request 2026-10-13: the tuner must not assume the user knows what
+        // any of this means. Every control carries one plain-language line
+        // (`dshac-help`), the panel opens with what compaction IS and when a
+        // change takes effect, and the footer separates live settings from code
+        // changes. Help text is wired to its input through aria-describedby, so
+        // it reaches a screen reader as a description rather than as stray text.
+        var field = function (key, label, type, help) {
+          var helpId = 'dshac-' + key + '-help'
           return h('div', { className: 'dshac-field' },
             h('label', { htmlFor: 'dshac-' + key }, label),
-            h('input', { id: 'dshac-' + key, type: type || 'text', value: form[key], onChange: set(key) }),
+            h('input', {
+              id: 'dshac-' + key,
+              type: type || 'text',
+              value: form[key],
+              onChange: set(key),
+              'aria-describedby': helpId,
+            }),
+            help ? h('p', { className: 'dshac-help', id: helpId }, help) : null,
           )
         }
+
+        var unreachable = data.__unreachable === true
+        var why = typeof data.__why === 'string' && data.__why.length > 0 ? ' (' + data.__why + ')' : ''
 
         // Focus the surface on open so the keyboard reaches its fields and so
         // Escape and wheel-scrolling behave before the first Tab; closing hands
@@ -525,17 +596,35 @@
             : MEASURE_STYLE,
         },
           h('h4', null, t.title),
-          h('div', { className: 'dshac-note' }, statusLine({ strings: t, data: data })),
-          h('div', { className: 'dshac-check' },
-            h('input', { id: 'dshac-enabled', type: 'checkbox', checked: form.enabled === true, onChange: set('enabled') }),
-            h('label', { htmlFor: 'dshac-enabled' }, t.enabled),
+          h('p', { className: 'dshac-intro' }, t.intro),
+          unreachable
+            ? h('div', { className: 'dshac-banner dshac-bad' },
+              h('strong', null, t.routeDown + why),
+              h('p', { className: 'dshac-help' }, t.helpRouteDown),
+            )
+            : h('div', null,
+              h('div', { className: 'dshac-note' }, statusLine({ strings: t, data: data })),
+              h('p', { className: 'dshac-help' }, t.helpStatus),
+            ),
+          h('div', { className: 'dshac-field' },
+            h('div', { className: 'dshac-check' },
+              h('input', {
+                id: 'dshac-enabled',
+                type: 'checkbox',
+                checked: form.enabled === true,
+                onChange: set('enabled'),
+                'aria-describedby': 'dshac-enabled-help',
+              }),
+              h('label', { htmlFor: 'dshac-enabled' }, t.enabled),
+            ),
+            h('p', { className: 'dshac-help', id: 'dshac-enabled-help' }, t.helpEnabled),
           ),
-          field('ratio', t.triggerRatio, 'number'),
-          field('tokens', t.triggerTokens, 'number'),
-          field('retainTokens', t.retainTokens, 'number'),
-          field('archiveRoot', t.archiveRoot, 'text'),
-          field('provider', t.provider, 'text'),
-          field('model', t.model, 'text'),
+          field('ratio', t.triggerRatio, 'number', t.helpRatio),
+          field('tokens', t.triggerTokens, 'number', t.helpTokens),
+          field('retainTokens', t.retainTokens, 'number', t.helpRetain),
+          field('archiveRoot', t.archiveRoot, 'text', t.helpArchiveRoot),
+          field('provider', t.provider, 'text', t.helpProvider),
+          field('model', t.model, 'text', t.helpModel),
           h('div', { className: 'dshac-actions' },
             h('button', { type: 'button', onClick: save, disabled: !writable }, t.save),
             h('button', { type: 'button', onClick: props.onClose }, t.close),
@@ -545,9 +634,12 @@
               : null,
           ),
           writable ? null : h('div', { className: 'dshac-note' },
-            t.readOnly + (capabilities.reason || ''),
+            // An empty reason is what made the read-only state unreadable; the
+            // fallback explains the concrete next action instead of "Read-only: ".
+            t.readOnly + (capabilities.reason || t.helpNoEditor),
             capabilities.snippet ? h('pre', null, capabilities.snippet) : null,
           ),
+          h('p', { className: 'dshac-foot' }, t.helpSave),
         )
       }
 
@@ -573,6 +665,11 @@
         var recent = data && Array.isArray(data.recent) && data.recent.length > 0 ? data.recent[0] : null
         var showRecent = running === null && recent !== null && Date.now() - recent.finishedAt < RECENT_MS
         var enabled = !data || data.enabled !== false
+        // The host route answering 404/offline is a distinct state from
+        // "disabled": the plugin may be perfectly enabled while this process
+        // never registered its route. Amber + a titled pill says "unknown"
+        // instead of quietly reusing the grey that means "switched off".
+        var unreachable = data !== null && data.__unreachable === true
 
         // The anchor shrink-wraps the pill so placement measures the pill
         // itself; anchoring to the row would let the progress strip widen and
@@ -585,9 +682,11 @@
             onClick: function () { setOpen(!open) },
             'aria-haspopup': 'dialog',
             'aria-expanded': open ? 'true' : 'false',
-            title: t.title,
+            title: unreachable ? t.routeDown : t.title,
           },
-            h('span', { className: 'dshac-dot', 'data-on': enabled ? 'true' : 'false' }),
+            unreachable
+              ? h('span', { className: 'dshac-dot', 'data-state': 'unknown' })
+              : h('span', { className: 'dshac-dot', 'data-on': enabled ? 'true' : 'false' }),
             h('span', null, t.open),
           ),
         )

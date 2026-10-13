@@ -140,6 +140,75 @@ describe('client bundle contract', () => {
   })
 })
 
+// User request 2026-10-13: the floating tuner must not assume the user already
+// knows what compaction, a window fraction, or a retain budget means. These are
+// source-shape assertions (this repo runs vitest on node with no DOM); the
+// rendered result is verified in the browser.
+describe('tuner explanations', () => {
+  /** Extract the `key: 'value',` pairs of one locale block. */
+  function localeEntries(locale: 'en' | 'zh'): Array<[string, string]> {
+    const start = client.indexOf(locale + ': {')
+    expect(start).toBeGreaterThan(-1)
+    const rest = client.slice(start)
+    const end = rest.indexOf('\n    },')
+    const body = rest.slice(0, end === -1 ? rest.length : end)
+    return [...body.matchAll(/^ {6}([A-Za-z]+): '((?:[^'\\]|\\.)*)',/gm)]
+      .map(match => [match[1], match[2]] as [string, string])
+  }
+
+  it('states what compaction is and when an edit takes effect', () => {
+    expect(client).toContain('className: \'dshac-intro\'')
+    expect(client).toContain('className: \'dshac-foot\'')
+    const intro = localeEntries('en').find(entry => entry[0] === 'intro')?.[1] ?? ''
+    expect(intro.length).toBeGreaterThan(80)
+    expect(intro).toMatch(/no restart/)
+  })
+
+  it('gives every tuner control its own help line, wired for screen readers', () => {
+    // The field helper attaches the description; each call site must pass text.
+    expect(client).toContain("'aria-describedby': helpId")
+    expect(client).toContain("'aria-describedby': 'dshac-enabled-help'")
+    for (const call of [
+      "field('ratio', t.triggerRatio, 'number', t.helpRatio)",
+      "field('tokens', t.triggerTokens, 'number', t.helpTokens)",
+      "field('retainTokens', t.retainTokens, 'number', t.helpRetain)",
+      "field('archiveRoot', t.archiveRoot, 'text', t.helpArchiveRoot)",
+      "field('provider', t.provider, 'text', t.helpProvider)",
+      "field('model', t.model, 'text', t.helpModel)",
+    ]) expect(client).toContain(call)
+    expect(client).toContain("h('p', { className: 'dshac-help' }, t.helpStatus)")
+    expect(client).toContain("h('p', { className: 'dshac-help', id: 'dshac-enabled-help' }, t.helpEnabled)")
+  })
+
+  it('keeps both locales in step and every help string substantive', () => {
+    const en = localeEntries('en')
+    const zh = localeEntries('zh')
+    expect(en.length).toBeGreaterThan(25)
+    expect(en.map(entry => entry[0]).sort()).toEqual(zh.map(entry => entry[0]).sort())
+    for (const locale of [en, zh]) {
+      for (const [key, value] of locale) {
+        if (!key.startsWith('help')) continue
+        expect(value.length, key).toBeGreaterThan(20)
+      }
+    }
+  })
+
+  it('turns an unreachable host route into a legible state', () => {
+    // Before: a 404 made `useStatus` return null, so the row rendered nothing,
+    // the panel had no reason for being read-only, and the user saw a bare
+    // "Read-only: ". Now the poll reports the failure, the pill says unknown,
+    // and the panel explains the restart semantics of a host-code change.
+    expect(client).toContain("__unreachable: true")
+    expect(client).toContain("h('span', { className: 'dshac-dot', 'data-state': 'unknown' })")
+    expect(client).toContain('.dshac-dot[data-state="unknown"]{background:#d29922}')
+    expect(client).toContain("h('strong', null, t.routeDown + why)")
+    expect(client).toContain('capabilities.reason || t.helpNoEditor')
+    for (const [key, value] of localeEntries('en')) {
+      if (key === 'helpRouteDown') expect(value).toMatch(/next harness start/)
+    }
+  })
+})
+
 describe('package wiring', () => {
   it('points the client export at the hand-written bundle', () => {
     expect(pkg.exports['./client']).toBe('./client.js')

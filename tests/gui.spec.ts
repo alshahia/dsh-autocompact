@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
@@ -381,5 +381,149 @@ describe('installGuiBridge', () => {
     const { ctx, warns } = fakeContext({ webServer })
     expect(installGuiBridge(ctx, fakeEngine())).toBe(true)
     expect(warns.join('\n')).toMatch(/could not register .*status/)
+  })
+
+  // The cold-boot defect (measured live 2026-10-13): the web server is provided
+  // by the web-runtime boot fiber and is NOT reachable when this engine is
+  // applied, so a one-shot `ctx.get('webServer')` registered nothing and the
+  // client's polls answered 404 for the whole process life. The sanctioned form
+  // is `ctx.inject(['webServer'], …)`, which activates a child scope when the
+  // service actually appears.
+  describe('optional webServer', () => {
+    it('defers registration through ctx.inject instead of reading at apply time', () => {
+      const registered: GuiRoute[] = []
+      const calls: string[][] = []
+      /** Base scope: no webServer yet, exactly like a cold start. */
+      const { ctx } = fakeContext()
+      ;(ctx as unknown as Record<string, unknown>).inject =
+        (deps: string[], _callback: (scope: Context) => void) => { calls.push([...deps]) }
+
+      // The base scope cannot see the server, yet the bridge reports that
+      // registration is arranged — not that the capability is absent.
+      expect(installGuiBridge(ctx, fakeEngine())).toBe(true)
+      expect(calls).toEqual([['webServer']])
+      expect(registered).toEqual([])
+    })
+
+    it('registers on the injected child scope when the service appears', () => {
+      const registered: GuiRoute[] = []
+      let deferred: ((scope: Context) => void) | undefined
+      const webServer = {
+        register: (route: GuiRoute) => {
+          registered.push(route)
+          return () => {}
+        },
+      }
+      const { ctx, infos } = fakeContext()
+      ;(ctx as unknown as Record<string, unknown>).inject =
+        (_deps: string[], callback: (scope: Context) => void) => { deferred = callback }
+
+      expect(installGuiBridge(ctx, fakeEngine())).toBe(true)
+      expect(registered).toEqual([])
+
+      const child = {
+        logger: { info: () => {}, warn: () => {} },
+        get: (name: string) => (name === 'webServer' ? webServer : undefined),
+        effect: (callback: () => (() => void) | void) => callback(),
+      } as unknown as Context
+      deferred?.(child)
+      expect(registered.map(route => route.path)).toEqual([STATUS_ROUTE, CONFIG_ROUTE])
+      // The base scope alone never saw a server, so no capability absence is claimed.
+      expect(infos.join('\n')).not.toMatch(/no web server/)
+    })
+
+    it('reports the absence only when the deferred scope has none either', () => {
+      let deferred: ((scope: Context) => void) | undefined
+      const { ctx, infos } = fakeContext()
+      ;(ctx as unknown as Record<string, unknown>).inject =
+        (_deps: string[], callback: (scope: Context) => void) => { deferred = callback }
+      expect(installGuiBridge(ctx, fakeEngine())).toBe(true)
+      const child = {
+        logger: { info: () => {}, warn: () => {} },
+        get: () => undefined,
+        effect: (callback: () => (() => void) | void) => callback(),
+      } as unknown as Context
+      deferred?.(child)
+      expect(infos.join('\n')).toMatch(/no web server/)
+    })
+
+    it('fails safe when ctx.inject itself throws', () => {
+      const { ctx, warns } = fakeContext()
+      ;(ctx as unknown as Record<string, unknown>).inject = () => { throw new Error('no fiber') }
+      expect(installGuiBridge(ctx, fakeEngine())).toBe(false)
+      expect(warns.join('\n')).toMatch(/could not arrange the GUI indicator/)
+    })
+  })
+
+  // The fake-context tests above assert the shape of the fix; this group proves
+  // the behavior against the REAL cordis registry, which is what the harness
+  // runs. It reproduces the cold-boot order: the engine is applied while the web
+  // server is not provided yet, and the routes must appear by themselves when
+  // the provider fiber comes up. This is as close to the live 404 as a test can
+  // get without restarting the harness that hosts the session.
+  describe('real cordis registry', () => {
+    it('registers the routes when the web server appears after apply', async () => {
+      const registered: GuiRoute[] = []
+      const root = new Context()
+      // Precondition: nothing provides the service yet, and the base context
+      // cannot reach it — the exact cold-boot state that produced the live 404.
+      expect(root.get('webServer')).toBeUndefined()
+
+      const applied = installGuiBridge(root, fakeEngine())
+      expect(applied).toBe(true)
+      expect(registered).toEqual([])
+
+      // The web-runtime boot fiber provides it later.
+      const provider = root.plugin((ctx) => {
+        ctx.provide('webServer', {
+          register: (route: GuiRoute) => {
+            registered.push(route)
+            return () => {}
+          },
+        })
+      })
+      await provider
+      await new Promise(resolve => { setTimeout(resolve, 10) })
+
+      expect(registered.map(route => route.path)).toEqual([STATUS_ROUTE, CONFIG_ROUTE])
+    })
+
+    it('re-runs the install when the web server is withdrawn and provided again', async () => {
+      // `ctx.inject` unloads and re-runs on service changes, so a harness that
+      // completes its boot order differently (or replaces the server) still ends
+      // up with exactly one pair of routes rather than none.
+      const registered: GuiRoute[] = []
+      const root = new Context()
+      installGuiBridge(root, fakeEngine())
+      const disposers: Array<() => void> = []
+      const provider = root.plugin((ctx) => {
+        const dispose = ctx.provide('webServer', {
+          register: (route: GuiRoute) => {
+            registered.push(route)
+            return () => {}
+          },
+        })
+        disposers.push(() => { void dispose() })
+      })
+      await provider
+      await new Promise(resolve => { setTimeout(resolve, 10) })
+      expect(registered).toHaveLength(2)
+
+      disposers.forEach(dispose => dispose())
+      await new Promise(resolve => { setTimeout(resolve, 10) })
+      expect(root.get('webServer')).toBeUndefined()
+
+      const second = root.plugin((ctx) => {
+        ctx.provide('webServer', {
+          register: (route: GuiRoute) => {
+            registered.push(route)
+            return () => {}
+          },
+        })
+      })
+      await second
+      await new Promise(resolve => { setTimeout(resolve, 10) })
+      expect(registered.map(route => route.path)).toEqual([STATUS_ROUTE, CONFIG_ROUTE, STATUS_ROUTE, CONFIG_ROUTE])
+    })
   })
 })

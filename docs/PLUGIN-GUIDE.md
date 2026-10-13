@@ -175,6 +175,7 @@ shipped occupant. See `docs/incidents/2026-10-12-native-settings-surface-already
 | Config values (volatile groups) | Immediately, on the next step |
 | `client.js` (or any client bundle) | Next **page load** of the Web GUI |
 | Host `src/*.ts` | One **harness restart** (modules are imported once per process) |
+| An optional service another boot entry provides (`webServer`) | Whenever that provider comes up — `ctx.inject([name], …)` re-runs your registration then |
 
 A page refresh is not a restart, and a restart is user-performed: the running
 harness may host the current agent session. Never kill or replace it.
@@ -233,6 +234,22 @@ killing/restarting the running harness, starting a replacement server.
     ratio broke pure-token configs. Test the other mode when you add a default.
 14. **Warn-once bookkeeping keyed on the wrong identity reports twice** — key it
     on the thing that changed, not on the call site.
+15. **A service another boot entry provides does not exist yet when your plugin
+    applies** — `webServer` comes from the `web-runtime`/`webserver` startup
+    entries, so `ctx.get('webServer')` at apply time reads "absent" on a cold
+    start and anything it guards silently never happens while the plugin keeps
+    working. Consume optional services with `ctx.inject([name], scope => …)` and
+    register on the injected scope. Probe a route with a control: `401` means it
+    exists (auth-gated), `404` on `/dsh-*` means it was never registered.
+16. **A `200` measured right after a patch reload is a warm-apply measurement** —
+    the process was already up, so eager reads succeed there and fail at the next
+    cold start. Re-verify boot-order-dependent wiring after a restart before
+    writing it down as verified.
+17. **A UI that assumes knowledge is a defect** — the tuner shipped with terse
+    labels, an empty `Read-only: ` and no state at all when its route was
+    missing. Every control needs one plain-language line, the panel needs to say
+    what it does and when a change applies, and an unreachable host must render a
+    legible explanation rather than nothing.
 
 Records: [`docs/incidents/`](incidents/) — issue, root cause, fix, evidence, for
 each of the above. Index: [`docs/INCIDENT-INDEX.md`](INCIDENT-INDEX.md).
